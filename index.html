@@ -321,7 +321,7 @@ async function syncFromDrive(){
     const json = await res.json();
     if(json.ok && json.data){
       const d = json.data;
-      if(!confirm(`Drive'dan ${d.ogr?.length||0} öğrenci, ${d.drs?.length||0} ders yüklenecek. Yerel veri bunlarla değiştirilecek. Devam?`)) { setSyncStatus("idle",""); return; }
+     if(!confirm(`Drive'dan ${d.ogr?.length||0} öğrenci, ${d.drs?.length||0} ders yüklenecek. Yerel veri bunlarla değiştirilecek. Devam?`)) { setSyncStatus("idle",""); return; }
       ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
       const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
       _nid = allIds.length ? Math.max(...allIds)+1 : 100;
