@@ -335,7 +335,7 @@ function scheduleSyncToDrive(){
   clearTimeout(_syncTimer);
   if(!GAS_URL) return;
   _syncTimer = setTimeout(()=>syncToDrive(true), 3000); // 3sn debounce
-}
+}setInterval(()=>{ if(GAS_URL) syncFromDrive(); }, 60000);
 
 /* ── State ── */
 let ogr  = load(KEYS.ogr,[
