@@ -759,7 +759,7 @@ function modalOgrDetay(oid){
     persist();closeOverlay();render();
   };
   $("btn-odemeAlDetay").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOdeme(oid),50); };
-}$("btn-ogrDuzenle").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOgrDuzenle(oid),50); };
+$("btn-ogrDuzenle").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOgrDuzenle(oid),50); };
 function modalOgrDuzenle(oid){
   const o=ogr.find(x=>x.id===oid);if(!o)return;
   showOverlay(`<div class="modal-title">✏️ Öğrenci Düzenle</div>
