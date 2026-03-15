@@ -286,19 +286,30 @@ function setSyncStatus(s, msg){
   el.innerHTML = `<span style="color:${d.color};font-size:11px">${d.icon} ${d.text}</span>`;
 }
 
+function jsonp(url, cb){
+  return new Promise((resolve, reject)=>{
+    const id = "_jp" + Date.now();
+    const s = document.createElement("script");
+    window[id] = (data)=>{ delete window[id]; document.head.removeChild(s); resolve(data); };
+    s.onerror = ()=>{ delete window[id]; document.head.removeChild(s); reject(new Error("JSONP failed")); };
+    s.src = url + "&callback=" + id;
+    document.head.appendChild(s);
+  });
+}
+
 async function syncToDrive(silent){
   if(!GAS_URL){ if(!silent) setSyncStatus("error","URL ayarlanmamış"); return; }
   setSyncStatus("syncing","");
   try {
     const payload = {action:"save", data:{ogr,slot,drs,odm}, ts: Date.now()};
-    const res = await fetch(GAS_URL, {
-      method:"POST",
-      headers:{"Content-Type":"text/plain"},
+    const res = await fetch(GAS_URL + "?action=save", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify(payload)
     });
     const json = await res.json();
     if(json.ok){ setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR")); }
-    else { setSyncStatus("error", json.msg||"Bilinmeyen hata"); }
+    else { setSyncStatus("error", json.msg||"Hata"); }
   } catch(e){ setSyncStatus("error", e.message); }
 }
 
@@ -1009,8 +1020,8 @@ function modalExportImport(){
     const btn = document.getElementById("btn-testSync");
     btn.textContent="Test ediliyor…"; btn.disabled=true;
     try {
-      const res = await fetch(url+"?action=ping&t="+Date.now());
-      const j = await res.json();
+      const res2 = await fetch(url+"?action=ping&t="+Date.now());
+      const j = await res2.json();
       if(j.ok) alert("✅ Bağlantı başarılı! Drive sync hazır.");
       else alert("⚠️ Sunucu yanıtladı ama hata: " + JSON.stringify(j));
     } catch(e){ alert("❌ Bağlanamadı: " + e.message + "\n\nURL doğru mu? Apps Script yayınlandı mı?"); }
