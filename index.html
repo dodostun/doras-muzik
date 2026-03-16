@@ -545,10 +545,15 @@ function renderHaftalik(){
 }
 
 function renderOgrenciler(){
-  let html=`<div class="flex flex-between flex-center mb22">
+  let html=`<div class="flex flex-between flex-center flex-wrap gap8 mb22">
     <div class="page-title">Öğrenci Listesi</div>
-    <button class="btn" id="btn-yeniOgr">+ Öğrenci Ekle</button>
-  </div><div class="card">`;
+    <div class="flex gap8 flex-wrap">
+      <button class="btn-o" id="btn-duzenleAra">✏️ Öğrenci Düzenle</button>
+      <button class="btn" id="btn-yeniOgr">+ Öğrenci Ekle</button>
+    </div>
+  </div>
+  <div id="ogr-arama-wrap"></div>
+  <div class="card">`;
   if(!ogr.length) html+=`<div class="p24 text-center f13 c-dim">Henüz öğrenci eklenmedi.</div>`;
   ogr.forEach((o,i)=>{
     const renk=RENKLER[i%RENKLER.length];
@@ -567,6 +572,7 @@ function renderOgrenciler(){
       <div class="text-right" style="flex-shrink:0">
         <div class="f13 fw7 c-lime">${fmtEur(o.ucret)}</div>
         ${dotsHtml(o.id,renk)}
+        <button onclick="event.stopPropagation();modalChecklist(${o.id})" class="btn-ghost" style="font-size:11px;padding:5px 10px;margin-top:4px">📋 Kayıtlar</button>
       </div>
     </div>`;
   });
@@ -783,117 +789,240 @@ function modalOgrDetay(oid){
   $("btn-ogrDuzenle").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOgrDuzenle(oid),50); };
 }
 
-function modalOgrDuzenle(oid){
-  const o=ogr.find(x=>x.id===oid);if(!o)return;
-  const ogretmenOpts = OGRETMENLER.map(og=>`<option value="${og}" ${(o.ogretmen||OGRETMENLER[0])===og?"selected":""}>${og}</option>`).join("");
-  const dersOpts = DERS_T.map(d=>`<option ${o.ders===d?"selected":""}>${d}</option>`).join("");
+function modalDuzenleAra(){
   showOverlay(`<div class="modal-title">✏️ Öğrenci Düzenle</div>
   <div class="form-col">
-    <div><div class="lbl">İsim</div><input class="inp" id="fd-isim" value="${esc(o.isim)}"></div>
-    <div><div class="lbl">Ders Türü</div><select class="inp" id="fd-ders">${dersOpts}</select></div>
-    <div><div class="lbl">Öğretmen</div><select class="inp" id="fd-ogretmen">${ogretmenOpts}</select></div>
-    <div><div class="lbl">Telefon</div><input class="inp" id="fd-tel" value="${esc(o.tel||'')}"></div>
-    <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="fd-ucret" value="${o.ucret||0}"></div>
-    <div><div class="lbl">Notlar</div><textarea class="inp" id="fd-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
-    <div class="flex flex-end gap8 mt8">
-      <button class="btn-o" onclick="closeOverlay()">İptal</button>
-      <button class="btn" onclick="
-        const o2=ogr.find(x=>x.id===${oid});
-        if(!o2) return;
-        o2.isim=document.getElementById('fd-isim').value.trim()||o2.isim;
-        o2.ders=document.getElementById('fd-ders').value;
-        o2.ogretmen=document.getElementById('fd-ogretmen').value;
-        o2.tel=document.getElementById('fd-tel').value.trim();
-        o2.ucret=+document.getElementById('fd-ucret').value||0;
-        o2.notlar=document.getElementById('fd-notlar').value.trim();
-        persist();closeOverlay();render();
-      ">Kaydet</button>
+    <div>
+      <div class="lbl">Öğrenci Adını Yazın</div>
+      <input class="inp" id="ara-input" placeholder="Öğrenci adını yazın..." autocomplete="off" style="font-size:15px">
+    </div>
+    <div id="ara-sonuclar"></div>
+    <div id="ara-form"></div>
+    <div class="flex flex-end mt4">
+      <button class="btn-o" onclick="closeOverlay()">Kapat</button>
     </div>
   </div>`);
+
+  const araInput = document.getElementById('ara-input');
+  const araSonuclar = document.getElementById('ara-sonuclar');
+  const araForm = document.getElementById('ara-form');
+
+  araInput.focus();
+  araInput.oninput = () => {
+    const q = araInput.value.trim().toLowerCase();
+    araSonuclar.innerHTML = '';
+    araForm.innerHTML = '';
+    if(!q) return;
+    const eslesen = ogr.filter(o => o.isim.toLowerCase().includes(q));
+    if(!eslesen.length){
+      araSonuclar.innerHTML = '<div class="f12 c-dim">Öğrenci bulunamadı</div>';
+      return;
+    }
+    araSonuclar.innerHTML = eslesen.map(o =>
+      `<div onclick="gosterDuzenleForm(${o.id})" style="padding:10px 14px;background:var(--brown);border:1px solid var(--brown-bd);border-radius:6px;cursor:pointer;margin-bottom:6px;transition:border-color .2s"
+        onmouseover="this.style.borderColor='var(--lime-bd)'" onmouseout="this.style.borderColor='var(--brown-bd)'">
+        <div class="f14 fw6">${esc(o.isim)}</div>
+        <div class="f11 c-dim">${esc(o.ders)}${o.ogretmen ? ' · ' + esc(o.ogretmen) : ''}</div>
+      </div>`
+    ).join('');
+  };
 }
+
+function gosterDuzenleForm(oid){
+  const o = ogr.find(x => x.id === oid);
+  if(!o) return;
+  const araForm = document.getElementById('ara-form');
+  const araSonuclar = document.getElementById('ara-sonuclar');
+  if(araSonuclar) araSonuclar.innerHTML = '';
+
+  const dersOpts = DERS_T.map(d => `<option ${o.ders===d?'selected':''}>${d}</option>`).join('');
+  const ogretOpts = OGRETMENLER.map(og => `<option value="${og}" ${(o.ogretmen||'')===og?'selected':''}>${og}</option>`).join('');
+
+  araForm.innerHTML = `
+    <div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:16px;margin-top:8px">
+      <div class="f14 fw7 c-lime mb12">✏️ ${esc(o.isim)}</div>
+      <div class="form-col">
+        <div><div class="lbl">İsim</div><input class="inp" id="ed-isim" value="${esc(o.isim)}"></div>
+        <div class="grid2">
+          <div><div class="lbl">Ders Türü</div><select class="inp" id="ed-ders">${dersOpts}</select></div>
+          <div><div class="lbl">Öğretmen</div><select class="inp" id="ed-ogretmen"><option value="">—</option>${ogretOpts}</select></div>
+        </div>
+        <div class="grid2">
+          <div><div class="lbl">Telefon</div><input class="inp" id="ed-tel" value="${esc(o.tel||'')}"></div>
+          <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="ed-ucret" value="${o.ucret||0}"></div>
+        </div>
+        <div><div class="lbl">Notlar</div><textarea class="inp" id="ed-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
+        <div class="flex gap8 flex-end mt4">
+          <button class="btn-o" onclick="document.getElementById('ara-form').innerHTML='';document.getElementById('ara-input').value='';document.getElementById('ara-input').focus()">← Geri</button>
+          <button class="btn" onclick="kaydetDuzenle(${oid})">💾 Kaydet</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function kaydetDuzenle(oid){
+  const o = ogr.find(x => x.id === oid);
+  if(!o) return;
+  const isim = document.getElementById('ed-isim').value.trim();
+  if(!isim){ alert('İsim boş olamaz'); return; }
+  o.isim = isim;
+  o.ders = document.getElementById('ed-ders').value;
+  o.ogretmen = document.getElementById('ed-ogretmen').value;
+  o.tel = document.getElementById('ed-tel').value.trim();
+  o.ucret = +document.getElementById('ed-ucret').value || 0;
+  o.notlar = document.getElementById('ed-notlar').value.trim();
+  persist();
+  closeOverlay();
+  render();
+  setTimeout(()=>{ alert('✅ ' + o.isim + ' kaydedildi!'); }, 100);
+}
+
+function modalOgrDuzenle(oid){ gosterDuzenleForm(oid); }
+
 
 function modalChecklist(oid){
   const o=ogr.find(x=>x.id===oid);if(!o)return;
   const renk=ogrRenk(o.id);
-  const paket=paketDur(o.id,drs,odm);
   const tumDrs=[...drs.filter(d=>d.oid===oid)].sort((a,b)=>a.tarih.localeCompare(b.tarih));
   const ogOdm=[...odm.filter(x=>x.oid===oid)].sort((a,b)=>a.tarih.localeCompare(b.tarih));
+  
+  // Build packets: each group of 4 lessons after last payment
   let paketler=[],buf=[];
   for(const d of tumDrs){buf.push(d);if(buf.length===4){paketler.push([...buf]);buf=[];}}
   if(buf.length)paketler.push([...buf]);
-  paketler.reverse();
-  const p4=Math.min(paket,4);
+  paketler.reverse(); // newest first
+  
+  // Current packet = first (newest) incomplete packet or new empty one
+  const mevcutDrs = paketler[0] || [];
+  const mevcutSayisi = mevcutDrs.length;
+  const paketDolu = mevcutSayisi >= 4;
+  const sonOdm = ogOdm.length > 0 ? ogOdm[ogOdm.length-1] : null;
 
-  let html=`
-    <div class="flex flex-center gap12 mb18">
-      <div style="width:42px;height:42px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
-      <div><div class="f19 fw7 c-lime">${esc(o.isim)}</div><div class="f12 c-dim">${esc(o.ders)} · Ders Geçmişi</div></div>
-    </div>
-    <div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:14px 18px;margin-bottom:14px">
-      <div class="f10 fw6 upper ls1 c-dim mb8">Mevcut Paket</div>
-      <div class="flex gap8 flex-center flex-wrap">
-        ${[1,2,3,4].map(i=>`<div style="width:36px;height:36px;border-radius:8px;border:2px solid ${i<=p4?"var(--lime)":"var(--brown-bd)"};background:${i<=p4?"var(--lime-bg)":"transparent"};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:${i<=p4?"var(--lime)":"var(--brown-bd)"}">${i<=p4?"✓":""}</div>`).join("")}
-        <span class="f13" style="color:${paket>=4?"var(--red)":"var(--txt-mid)"};;margin-left:4px;font-weight:${paket>=4?700:400}">${paket>=4?"⚠ Paket doldu!":`${p4}/4 tamamlandı`}</span>
-      </div>
-    </div>
-    <div id="cl-ekform-wrap"></div>
-    <button id="btn-cl-ekform" style="background:transparent;border:1px dashed var(--lime-bd);color:var(--lime);padding:7px 0;border-radius:4px;cursor:pointer;font-size:12px;width:100%;text-align:center;margin-bottom:14px">+ Telafi / Ekstra Ders Ekle</button>
-    <div class="f10 fw6 upper ls1 c-dim mb10">Tüm Paketler</div>
-    <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:10px" id="cl-paketler">`;
+  // Build clickable boxes for current packet
+  const kutucuklar = [0,1,2,3].map(i => {
+    const d = mevcutDrs[i];
+    if(d){
+      return `<div onclick="drsSil(${d.id}, ${oid})" title="Tıkla: bu dersi sil" style="
+        width:72px;height:72px;border-radius:10px;
+        background:var(--lime-bg);border:2px solid var(--lime);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        cursor:pointer;transition:all .2s;gap:3px;position:relative
+      " onmouseover="this.style.background='var(--red-bg)';this.style.borderColor='var(--red)'"
+         onmouseout="this.style.background='var(--lime-bg)';this.style.borderColor='var(--lime)'">
+        <div style="font-size:20px;font-weight:700;color:var(--lime)">✓</div>
+        <div style="font-size:9px;color:var(--txt-dim);text-align:center">${fmtD(d.tarih)}</div>
+        <div style="font-size:8px;color:var(--txt-dim);opacity:.6">sil</div>
+      </div>`;
+    } else {
+      return `<div onclick="drsEkleKutucuk(${oid})" title="Tıkla: bugün ders işaretle" style="
+        width:72px;height:72px;border-radius:10px;
+        background:transparent;border:2px dashed var(--brown-bd);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        cursor:pointer;transition:all .2s;gap:3px
+      " onmouseover="this.style.background='var(--lime-bg)';this.style.borderColor='var(--lime)'"
+         onmouseout="this.style.background='transparent';this.style.borderColor='var(--brown-bd)'">
+        <div style="font-size:22px;color:var(--brown-bd)">+</div>
+        <div style="font-size:9px;color:var(--brown-bd)">ekle</div>
+      </div>`;
+    }
+  }).join('');
 
-  paketler.forEach((drs2,pi)=>{
-    const ri=paketler.length-1-pi,odendi=ri<ogOdm.length,aktif=pi===0;
-    const durumBg=odendi?"var(--green-bg)":aktif?"var(--blue-bg)":"var(--red-bg)";
-    const durumC=odendi?"var(--green)":aktif?"var(--blue)":"var(--red)";
-    const durumT=odendi?"✓ Ödendi":aktif?"Devam ediyor":"Ödeme bekleniyor";
-    html+=`<div style="background:var(--brown);border:1px solid ${odendi?"var(--lime-dd)":aktif?"var(--brown-bd)":"#3a1010"};border-radius:8px;padding:12px 14px">
-      <div class="flex flex-between flex-center mb10">
-        <span class="f12 fw7 c-dim upper" style="letter-spacing:.05em">Paket #${paketler.length-pi}</span>
-        <span class="badge" style="background:${durumBg};color:${durumC}">${durumT}</span>
+  let html = `
+    <div class="flex flex-center gap12 mb16">
+      <div style="width:44px;height:44px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
+      <div>
+        <div class="f18 fw7 c-lime">${esc(o.isim)}</div>
+        <div class="f11 c-dim">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''}</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-        ${[0,1,2,3].map(i=>{const d=drs2[i];
-          return `<div class="cl-sq" style="background:${d?"var(--lime-bg)":"transparent"};border:1px solid ${d?"var(--lime-bd)":"var(--brown-bd)"};border-radius:5px">
-            ${d?`<div class="fw7 c-lime" style="font-size:14px">✓</div>
-              <div class="f10 c-dim text-center">${fmtD(d.tarih)}</div>
-              ${d.saat?`<div style="font-size:9px;color:var(--lime-d)">${d.saat}</div>`:""}
-              <button style="position:absolute;top:2px;right:3px;background:none;border:none;color:var(--brown-bd);cursor:pointer;font-size:11px;padding:0;line-height:1" data-drsSil="${d.id}">×</button>`
-            :`<div class="f12" style="color:var(--brown-bd)">—</div>`}
-          </div>`;
-        }).join("")}
+    </div>
+
+    <!-- Mevcut Paket Kutucukları -->
+    <div style="background:var(--brown);border:1px solid ${paketDolu?'var(--red)':'var(--lime-bd)'};border-radius:10px;padding:16px 18px;margin-bottom:14px">
+      <div class="flex flex-between flex-center mb12">
+        <div class="f11 fw7 upper ls1 c-dim">Mevcut Paket (${mevcutSayisi}/4)</div>
+        <span class="badge" style="background:${paketDolu?'var(--red-bg)':'var(--lime-bg)'};color:${paketDolu?'var(--red)':'var(--lime)'}">
+          ${paketDolu?'⚠ ÖDEME GEREKİYOR':'Devam ediyor'}
+        </span>
       </div>
-    </div>`;
-  });
-  if(!paketler.length) html+=`<div class="f13 c-dim">Henüz ders kaydı yok.</div>`;
-  html+=`</div><div class="flex flex-end mt18"><button class="btn-o" onclick="closeOverlay()">Kapat</button></div>`;
+      <div class="flex gap10 mb14" style="gap:10px">
+        ${kutucuklar}
+      </div>
+      <div class="f11 c-dim" style="margin-bottom:12px">Boş kutuya tıkla → bugün ders ekle &nbsp;|&nbsp; Dolu kutuya tıkla → dersi sil</div>
+      <div class="flex gap8 flex-wrap">
+        <div class="flex gap6 flex-center flex-wrap">
+          <input type="date" id="cl-tarih-sec" class="inp" value="${today()}" style="width:140px;font-size:12px;padding:6px 10px">
+          <input type="time" id="cl-saat-sec" class="inp" value="" placeholder="Saat" style="width:90px;font-size:12px;padding:6px 10px">
+          <button class="btn-o" onclick="drsEkleManuel(${oid})" style="font-size:12px;padding:7px 12px">+ Farklı Tarih Ekle</button>
+        </div>
+        ${paketDolu?`<button class="btn" onclick="odemeAlVeSifirla(${oid})" style="background:var(--green);font-size:12px">💰 Ödeme Al & Paketi Sıfırla</button>`:''}
+      </div>
+    </div>
+
+    <!-- Ödeme Geçmişi -->
+    <div class="f11 fw7 upper ls1 c-dim mb8">Ödeme Geçmişi (${ogOdm.length} paket)</div>
+    <div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:16px">`;
+
+  if(!ogOdm.length){
+    html += `<div class="f12 c-dim">Henüz ödeme kaydı yok.</div>`;
+  } else {
+    [...ogOdm].reverse().forEach((od,pi) => {
+      // Find which packet this payment corresponds to
+      const paketIdx = ogOdm.length - 1 - pi;
+      const ilgiliDrs = tumDrs.slice(paketIdx*4, paketIdx*4+4);
+      html += `<div style="background:var(--brown);border:1px solid var(--lime-dd);border-radius:8px;padding:10px 14px">
+        <div class="flex flex-between flex-center mb6">
+          <span class="f12 fw7" style="color:var(--green)">✓ Paket #${paketIdx+1} — ${fmtEur(od.tutar)}</span>
+          <span class="f11 c-dim">${fmtD(od.tarih)}</span>
+        </div>
+        <div class="flex gap6 flex-wrap">
+          ${ilgiliDrs.map(d=>`<span style="background:var(--lime-bg);border:1px solid var(--lime-bd);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--lime)">${fmtD(d.tarih)}</span>`).join('')}
+        </div>
+      </div>`;
+    });
+  }
+
+  html += `</div>
+    <div class="flex flex-end"><button class="btn-o" onclick="closeOverlay()">Kapat</button></div>`;
 
   showOverlay(html);
-
-  // Ders sil
-  document.querySelectorAll("[data-drsSil]").forEach(btn=>btn.onclick=()=>{
-    drs=drs.filter(x=>x.id!==+btn.dataset.drsSil);
-    persist();modalChecklist(oid);
-  });
-  // Telafi ekle
-  let ekOpen=false;
-  $("btn-cl-ekform").onclick=()=>{
-    if(ekOpen){$("cl-ekform-wrap").innerHTML="";ekOpen=false;return;}
-    ekOpen=true;
-    const td=today();
-    $("cl-ekform-wrap").innerHTML=`<div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:12px 14px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
-      <div style="flex:1;min-width:120px"><div class="lbl">Tarih</div><input class="inp" type="date" id="cl-tarih" value="${td}" style="padding:7px 10px"></div>
-      <div style="width:110px"><div class="lbl">Saat (opsiyonel)</div><input class="inp" type="time" id="cl-saat" style="padding:7px 10px"></div>
-      <button class="btn" style="padding:9px 14px;font-size:12px" id="btn-clEkle">Ekle</button>
-      <button onclick="this.parentElement.parentElement.innerHTML=''" style="background:transparent;border:1px solid var(--brown-bd);color:var(--txt-dim);padding:9px 12px;border-radius:4px;cursor:pointer;font-size:12px">İptal</button>
-    </div>`;
-    $("btn-clEkle").onclick=()=>{
-      const tarih=$("cl-tarih").value;if(!tarih)return;
-      const saat=$("cl-saat").value||"";
-      drs.push({id:nid(),oid,tarih,saat});
-      persist();modalChecklist(oid);
-    };
-  };
 }
+
+function drsEkleKutucuk(oid){
+  drs.push({id:nid(), oid, tarih:today(), saat:''});
+  persist();
+  modalChecklist(oid);
+}
+
+function drsEkleManuel(oid){
+  const tarihEl = document.getElementById('cl-tarih-sec');
+  const saatEl = document.getElementById('cl-saat-sec');
+  if(!tarihEl) return;
+  const tarih = tarihEl.value;
+  if(!tarih){ alert('Tarih seçin'); return; }
+  const saat = saatEl ? saatEl.value : '';
+  drs.push({id:nid(), oid, tarih, saat});
+  persist();
+  modalChecklist(oid);
+}
+
+function drsSil(drsId, oid){
+  if(!confirm('Bu ders kaydı silinsin mi?')) return;
+  drs = drs.filter(x => x.id !== drsId);
+  persist();
+  modalChecklist(oid);
+}
+
+function odemeAlVeSifirla(oid){
+  const o = ogr.find(x => x.id === oid);
+  if(!o) return;
+  const tutar = o.ucret || 0;
+  const onay = confirm(`${o.isim} için ${fmtEur(tutar)} ödeme alındı mı?\nOdeme alındığında mevcut 4 ders paketi kapatılacak ve yeni paket başlayacak.`);
+  if(!onay) return;
+  odm.push({id:nid(), oid, tutar, tarih:today(), aciklama:'4 ders paketi', ay:BU_AY, yil:BU_YIL});
+  persist();
+  modalChecklist(oid);
+}
+
 
 /* ══════════════════════════
    MAIN RENDER
@@ -948,6 +1077,7 @@ function render(){
     if(!t)return;
     if(t.id==="btn-yeniOgr") modalYeniOgr();
     if(t.id==="btn-yeniSlot") modalYeniSlot();
+    if(t.id==="btn-duzenleAra") modalDuzenleAra();
     if(t.id==="hafta-prev"){haftaOff--;render();}
     if(t.id==="hafta-next"){haftaOff++;render();}
     if(t.id==="hafta-reset"){haftaOff=0;render();}
