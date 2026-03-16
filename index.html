@@ -239,6 +239,7 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
 const GUNLER = ["Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi","Pazar"];
 const GUN_SH = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"];
 const DERS_T = ["Piyano","Gitar","Keman","Bateri","Ses","Flüt","Diğer"];
+const OGRETMENLER = ["Doğukan Özel","Büşra Özel"];
 const AYLAR  = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 const SAATLER= Array.from({length:14},(_,i)=>`${String(i+8).padStart(2,"0")}:00`);
 const RENKLER= ["#a8d400","#50e080","#60b8e0","#d0a040","#e05050","#c070d0","#40d8c0"];
@@ -313,18 +314,21 @@ async function syncToDrive(silent){
   } catch(e){ setSyncStatus("error", e.message); }
 }
 
-async function syncFromDrive(){
-  if(!GAS_URL){ alert("Önce Drive sync ayarlarını yapın (💾 → ⚙️ Sync)"); return; }
+async function syncFromDrive(silent){
+  if(!GAS_URL){ if(!silent) alert("Önce Drive sync ayarlarını yapın (💾 → ⚙️ Sync)"); return; }
   setSyncStatus("syncing","");
   try {
     const res = await fetch(GAS_URL + "?action=load&t="+Date.now());
     const json = await res.json();
     if(json.ok && json.data){
       const d = json.data;
-     if(!confirm(`Drive'dan ${d.ogr?.length||0} öğrenci, ${d.drs?.length||0} ders yüklenecek. Yerel veri bunlarla değiştirilecek. Devam?`)) { setSyncStatus("idle",""); return; }
+      const driveTs = d.ts || 0;
+      const localTs = load("doras_last_ts", 0);
+      if(silent && driveTs <= localTs){ setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR")); return; }
       ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
       const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
       _nid = allIds.length ? Math.max(...allIds)+1 : 100;
+      save("doras_last_ts", driveTs);
       persist(); render();
       setSyncStatus("ok","Drive'dan yüklendi");
     } else { setSyncStatus("error", json.msg||"Veri bulunamadı"); }
@@ -335,7 +339,8 @@ function scheduleSyncToDrive(){
   clearTimeout(_syncTimer);
   if(!GAS_URL) return;
   _syncTimer = setTimeout(()=>syncToDrive(true), 3000); // 3sn debounce
-}setInterval(()=>{ if(GAS_URL) syncFromDrive(); }, 60000);
+}
+setInterval(()=>{ if(GAS_URL) syncFromDrive(true); }, 60000); // 1dk auto-sync
 
 /* ── State ── */
 let ogr  = load(KEYS.ogr,[
@@ -364,6 +369,7 @@ let haftaOff = 0;
 /* ── Persist ── */
 const persist = () => {
   save(KEYS.ogr,ogr);save(KEYS.slot,slot);save(KEYS.drs,drs);save(KEYS.odm,odm);save(KEYS.theme,darkMode);
+  save("doras_last_ts", Date.now());
   scheduleSyncToDrive();
 };
 
@@ -434,16 +440,25 @@ function renderBugun(gunStr, gunIdx, kilitli){
 }
 
 function renderProgram(){
+  const _ogretmenFilter = window._progOgretmenFilter || "tumu";
   let html=`<div class="flex flex-between flex-center flex-wrap gap8 mb22">
     <div class="page-title">Haftalık Ders Programı</div>
-    <div class="flex gap8">
+    <div class="flex gap8 flex-wrap">
+      <select class="inp" id="prog-ogretmen-filter" style="font-size:12px;padding:6px 10px">
+        <option value="tumu" ${_ogretmenFilter==="tumu"?"selected":""}>Tüm Öğretmenler</option>
+        ${OGRETMENLER.map(og=>`<option value="${og}" ${_ogretmenFilter===og?"selected":""}>${og}</option>`).join("")}
+      </select>
       <button class="btn-o" id="btn-yeniSlot">+ Slot Ekle</button>
       <button class="btn" id="btn-yeniOgr">+ Öğrenci</button>
     </div>
   </div>
   <div class="prog-grid">`;
   GUNLER.forEach((gun,gi)=>{
-    const gs=gunSlotlar(gi);
+    const gs=gunSlotlar(gi).filter(s=>{
+      if(_ogretmenFilter==="tumu") return true;
+      const o=ogr.find(x=>x.id===s.oid);
+      return o && (o.ogretmen||OGRETMENLER[0])===_ogretmenFilter;
+    });
     const isT=gi===B_IDX,isY=gi===Y_IDX;
     const colStyle=`background:${isT?"var(--brown)":"var(--card)"};border:1px solid ${isT?"var(--lime-bd)":isY?"rgba(168,212,0,.35)":"var(--card-bd)"};`;
     html+=`<div class="prog-col" style="${colStyle}">
@@ -536,7 +551,7 @@ function renderOgrenciler(){
     const renk=RENKLER[i%RENKLER.length];
     const borclu=paketDur(o.id,drs,odm)>=4;
     const ogSlots=slot.filter(s=>s.oid===o.id);
-   html+=`<div class="card-row" data-ogrDetay="${o.id}" style="cursor:pointer">
+    html+=`<div class="card-row" data-ogrDetay="${o.id}">
       <div style="width:40px;height:40px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
       <div class="flex1 mw0">
         <div class="flex flex-center gap8 flex-wrap">
@@ -548,7 +563,7 @@ function renderOgrenciler(){
       </div>
       <div class="text-right" style="flex-shrink:0">
         <div class="f13 fw7 c-lime">${fmtEur(o.ucret)}</div>
-        ${dotsHtml(o.id,renk)}<button onclick="event.stopPropagation();if(confirm('Sil?')){ogr=ogr.filter(x=>x.id!==${o.id});slot=slot.filter(x=>x.oid!==${o.id});drs=drs.filter(x=>x.oid!==${o.id});odm=odm.filter(x=>x.oid!==${o.id});persist();render();}" style="background:transparent;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 8px">🗑</button>
+        ${dotsHtml(o.id,renk)}
       </div>
     </div>`;
   });
@@ -643,6 +658,7 @@ function modalYeniOgr(){
     <div><div class="lbl">İsim Soyisim *</div><input class="inp" id="f-isim" placeholder="Ad Soyad"></div>
     <div><div class="lbl">Telefon</div><input class="inp" id="f-tel" placeholder="05XX..."></div>
     <div><div class="lbl">Ders Türü</div><select class="inp" id="f-ders">${DERS_T.map(d=>`<option>${d}</option>`).join("")}</select></div>
+    <div><div class="lbl">Öğretmen</div><select class="inp" id="f-ogretmen">${OGRETMENLER.map(og=>`<option>${og}</option>`).join("")}</select></div>
     <div><div class="lbl">Paket Ücreti (€)</div><input class="inp" id="f-ucret" type="number" placeholder="100"></div>
     <div><div class="lbl">Notlar</div><input class="inp" id="f-notlar" placeholder="Ek bilgi..."></div>
     <div style="border-top:1px solid var(--brown-bd);padding-top:14px">
@@ -691,7 +707,7 @@ function modalYeniOgr(){
   }
   $("btn-ogrKaydet").onclick=()=>{
     const isim=$("f-isim").value.trim();if(!isim)return;
-    const yeni={id:nid(),isim,tel:$("f-tel").value,ders:$("f-ders").value,notlar:$("f-notlar").value,ucret:Number($("f-ucret").value)||0};
+    const yeni={id:nid(),isim,tel:$("f-tel").value,ders:$("f-ders").value,ogretmen:$("f-ogretmen").value,notlar:$("f-notlar").value,ucret:Number($("f-ucret").value)||0};
     ogr.push(yeni);
     const gun=$("f-gun").value,saat=$("f-saat").value;
     if(gun!==""&&saat) slot.push({id:nid(),oid:yeni.id,gun:Number(gun),saat});
@@ -747,7 +763,7 @@ function modalOgrDetay(oid){
       ${ogOdm.length?[...ogOdm].reverse().map(od=>`<div class="flex flex-between" style="padding:6px 0;border-bottom:1px solid var(--brown);font-size:13px"><span class="c-dim">${fmtD(od.tarih)} · ${esc(od.aciklama)}</span><span class="fw6" style="color:var(--green)">${fmtEur(od.tutar)}</span></div>`).join(""):`<div class="f12 c-dim">Ödeme kaydı yok.</div>`}
     </div>
     <div class="flex flex-between">
-     <button class="btn-danger" id="btn-ogrSil">Sil</button><button class="btn-o" id="btn-ogrDuzenle" style="margin-left:8px">✏️ Düzenle</button>
+      <button class="btn-danger" id="btn-ogrSil">Sil</button>
       <div class="flex gap8">
         <button class="btn-o" onclick="closeOverlay()">Kapat</button>
         <button class="btn" id="btn-odemeAlDetay">💰 Ödeme Al</button>
@@ -759,32 +775,37 @@ function modalOgrDetay(oid){
     persist();closeOverlay();render();
   };
   $("btn-odemeAlDetay").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOdeme(oid),50); };
-  $("btn-ogrDuzenle").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOgrDuzenle(oid),50); };
 }
 
 function modalOgrDuzenle(oid){
   const o=ogr.find(x=>x.id===oid);if(!o)return;
+  const ogretmenOpts = OGRETMENLER.map(og=>`<option value="${og}" ${(o.ogretmen||OGRETMENLER[0])===og?"selected":""}>${og}</option>`).join("");
+  const dersOpts = DERS_T.map(d=>`<option ${o.ders===d?"selected":""}>${d}</option>`).join("");
   showOverlay(`<div class="modal-title">✏️ Öğrenci Düzenle</div>
   <div class="form-col">
-    <div><div class="lbl">İsim</div><input class="inp" id="f-isim" value="${esc(o.isim)}"></div>
-    <div><div class="lbl">Ders</div><input class="inp" id="f-ders" value="${esc(o.ders)}"></div>
-    <div><div class="lbl">Telefon</div><input class="inp" id="f-tel" value="${esc(o.tel||'')}"></div>
-    <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="f-ucret" value="${o.ucret||0}"></div>
-    <div><div class="lbl">Notlar</div><textarea class="inp" id="f-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
+    <div><div class="lbl">İsim</div><input class="inp" id="fd-isim" value="${esc(o.isim)}"></div>
+    <div><div class="lbl">Ders Türü</div><select class="inp" id="fd-ders">${dersOpts}</select></div>
+    <div><div class="lbl">Öğretmen</div><select class="inp" id="fd-ogretmen">${ogretmenOpts}</select></div>
+    <div><div class="lbl">Telefon</div><input class="inp" id="fd-tel" value="${esc(o.tel||'')}"></div>
+    <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="fd-ucret" value="${o.ucret||0}"></div>
+    <div><div class="lbl">Notlar</div><textarea class="inp" id="fd-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
     <div class="flex flex-end gap8 mt8">
       <button class="btn-o" onclick="closeOverlay()">İptal</button>
-      <button class="btn" id="btn-duzenleKaydet">Kaydet</button>
+      <button class="btn" onclick="
+        const o2=ogr.find(x=>x.id===${oid});
+        if(!o2) return;
+        o2.isim=document.getElementById('fd-isim').value.trim()||o2.isim;
+        o2.ders=document.getElementById('fd-ders').value;
+        o2.ogretmen=document.getElementById('fd-ogretmen').value;
+        o2.tel=document.getElementById('fd-tel').value.trim();
+        o2.ucret=+document.getElementById('fd-ucret').value||0;
+        o2.notlar=document.getElementById('fd-notlar').value.trim();
+        persist();closeOverlay();render();
+      ">Kaydet</button>
     </div>
   </div>`);
-  $("btn-duzenleKaydet").onclick=()=>{
-    o.isim=$("f-isim").value.trim()||o.isim;
-    o.ders=$("f-ders").value.trim()||o.ders;
-    o.tel=$("f-tel").value.trim();
-    o.ucret=+$("f-ucret").value||0;
-    o.notlar=$("f-notlar").value.trim();
-    persist();closeOverlay();render();
-  };
 }
+
 function modalChecklist(oid){
   const o=ogr.find(x=>x.id===oid);if(!o)return;
   const renk=ogrRenk(o.id);
@@ -962,6 +983,14 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
 /* ══════════════════════════
    INIT
 ══════════════════════════ */
+// Teacher filter onchange
+document.addEventListener('change', e=>{
+  if(e.target.id==='prog-ogretmen-filter'){
+    window._progOgretmenFilter = e.target.value;
+    render();
+  }
+});
+
 applyTheme();
 render();
 
@@ -1094,13 +1123,19 @@ function modalExportImport(){
 document.getElementById('btn-exportImport').onclick = () => modalExportImport();
 document.getElementById('btn-syncFrom').onclick = () => syncFromDrive();
 
+// Teacher filter onchange
+document.addEventListener('change', e=>{
+  if(e.target.id==='prog-ogretmen-filter'){
+    window._progOgretmenFilter = e.target.value;
+    render();
+  }
+});
+
 // On load: show sync status and auto-sync from Drive if URL set
 setSyncStatus('idle','');
 if(GAS_URL){
-  // Auto-pull on first load (silent - only update if Drive is newer)
-  setTimeout(()=>{
-    syncToDrive(true); // gentle push of local state to establish
-  }, 1500);
+  // Auto-load from Drive on startup
+  setTimeout(()=>{ syncFromDrive(true); }, 1500);
 }
 
 /* iOS install hint (shows once) */
