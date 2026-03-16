@@ -229,7 +229,7 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
 </div>
 
 <!-- OVERLAY/MODAL container -->
-<div id="overlay" style="display:none"></div>
+<div id="overlay" class="overlay" style="display:none"></div>
 
 <script>
 'use strict';
@@ -457,7 +457,10 @@ function renderProgram(){
     const gs=gunSlotlar(gi).filter(s=>{
       if(_ogretmenFilter==="tumu") return true;
       const o=ogr.find(x=>x.id===s.oid);
-      return o && (o.ogretmen||OGRETMENLER[0])===_ogretmenFilter;
+      if(!o) return false;
+      // If student has no teacher set, show under all teachers
+      if(!o.ogretmen) return true;
+      return o.ogretmen===_ogretmenFilter;
     });
     const isT=gi===B_IDX,isY=gi===Y_IDX;
     const colStyle=`background:${isT?"var(--brown)":"var(--card)"};border:1px solid ${isT?"var(--lime-bd)":isY?"rgba(168,212,0,.35)":"var(--card-bd)"};`;
@@ -551,7 +554,7 @@ function renderOgrenciler(){
     const renk=RENKLER[i%RENKLER.length];
     const borclu=paketDur(o.id,drs,odm)>=4;
     const ogSlots=slot.filter(s=>s.oid===o.id);
-    html+=`<div class="card-row" data-ogrDetay="${o.id}">
+    html+=`<div class="card-row" data-ogrDetay="${o.id}" style="cursor:pointer">
       <div style="width:40px;height:40px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
       <div class="flex1 mw0">
         <div class="flex flex-center gap8 flex-wrap">
@@ -616,6 +619,7 @@ function renderGecmis(){
 function showOverlay(html){
   const ov=$("overlay");
   ov.innerHTML=`<div class="modal pop">${html}</div>`;
+  ov.className="overlay";
   ov.style.display="flex";
   ov.onclick=e=>{if(e.target===ov)closeOverlay();};
 }
@@ -766,6 +770,7 @@ function modalOgrDetay(oid){
       <button class="btn-danger" id="btn-ogrSil">Sil</button>
       <div class="flex gap8">
         <button class="btn-o" onclick="closeOverlay()">Kapat</button>
+        <button class="btn-o" id="btn-ogrDuzenle">✏️ Düzenle</button>
         <button class="btn" id="btn-odemeAlDetay">💰 Ödeme Al</button>
       </div>
     </div>`);
@@ -775,6 +780,7 @@ function modalOgrDetay(oid){
     persist();closeOverlay();render();
   };
   $("btn-odemeAlDetay").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOdeme(oid),50); };
+  $("btn-ogrDuzenle").onclick=()=>{ closeOverlay(); setTimeout(()=>modalOgrDuzenle(oid),50); };
 }
 
 function modalOgrDuzenle(oid){
