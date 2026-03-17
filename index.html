@@ -322,13 +322,33 @@ async function syncFromDrive(silent){
     const json = await res.json();
     if(json.ok && json.data){
       const d = json.data;
-      const driveTs = d.ts || 0;
-      const localTs = load("doras_last_ts", 0);
-      if(silent && driveTs <= localTs){ setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR")); return; }
+      const driveOgrSayisi = (d.ogr||[]).length;
+
+      if(silent){
+        // Otomatik yükleme: SADECE local tamamen boşsa yükle
+        if(ogr.length > 0){
+          setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR"));
+          return; // Local veri var, dokunma!
+        }
+        // Local boş, Drive'dan yükle
+        ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
+        const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
+        _nid = allIds.length ? Math.max(...allIds)+1 : 100;
+        save("doras_last_ts", d.ts||0);
+        persist(); render();
+        setSyncStatus("ok","Drive'dan yüklendi (ilk kurulum)");
+        return;
+      }
+
+      // Manuel sync: kullanıcıya sor
+      if(!confirm(`Drive'dan ${driveOgrSayisi} öğrenci yüklenecek.\n\n⚠ Yerel verileriniz (${ogr.length} öğrenci) Drive'daki veriyle DEĞİŞTİRİLECEK.\n\nEmin misiniz?`)){
+        setSyncStatus("idle","");
+        return;
+      }
       ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
       const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
       _nid = allIds.length ? Math.max(...allIds)+1 : 100;
-      save("doras_last_ts", driveTs);
+      save("doras_last_ts", d.ts||0);
       persist(); render();
       setSyncStatus("ok","Drive'dan yüklendi");
     } else { setSyncStatus("error", json.msg||"Veri bulunamadı"); }
@@ -338,9 +358,10 @@ async function syncFromDrive(silent){
 function scheduleSyncToDrive(){
   clearTimeout(_syncTimer);
   if(!GAS_URL) return;
-  _syncTimer = setTimeout(()=>syncToDrive(true), 3000); // 3sn debounce
+  _syncTimer = setTimeout(()=>syncToDrive(true), 2000); // 2sn debounce
 }
-setInterval(()=>{ if(GAS_URL) syncFromDrive(true); }, 60000); // 1dk auto-sync
+// Auto-sync: push local changes to Drive every 5 minutes (safe - never overwrites local)
+setInterval(()=>{ if(GAS_URL && ogr.length > 0) syncToDrive(true); }, 300000);
 
 /* ── State ── */
 let ogr  = load(KEYS.ogr,[
@@ -1206,6 +1227,9 @@ function modalExportImport(){
     <div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:14px 16px">
       <div class="f13 fw7 c-lime mb6">☁️ Google Drive Otomatik Sync</div>
       <div class="f11 c-dim mb10">Apps Script URL'nizi girin. Her değişiklikte veriler otomatik Drive'a kaydedilir.</div>
+      <div style="background:var(--red-bg);border:1px solid var(--red);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--red);margin-bottom:10px">
+        ⚠ <strong>Yeni cihazda kurulum:</strong> URL'yi girin → "URL Kaydet" → ardından ⬇️ "Drive'dan Al" ile veriyi çekin.
+      </div>
       <div class="lbl">Apps Script Web App URL</div>
       <input class="inp" id="f-gasUrl" placeholder="https://script.google.com/macros/s/..." value="${GAS_URL}" style="font-size:11px;margin-bottom:8px">
       <div class="flex gap8">
@@ -1306,11 +1330,28 @@ document.addEventListener('change', e=>{
   }
 });
 
-// On load: show sync status and auto-sync from Drive if URL set
+// On load: show sync status
 setSyncStatus('idle','');
+// Warn if sync not configured
+if(!GAS_URL){
+  setTimeout(()=>{
+    const banner = document.createElement('div');
+    banner.id = 'sync-warn';
+    banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#3a1010;border:1.5px solid var(--red);border-radius:8px;padding:10px 18px;font-size:12px;color:var(--red);z-index:999;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.5)';
+    banner.innerHTML = '⚠ Sync ayarlanmamış — veriler sadece bu cihazda! <button onclick="modalExportImport();document.getElementById('sync-warn')?.remove()" style="background:var(--red);color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;margin-left:8px;font-size:11px">Ayarla</button> <button onclick="this.parentElement.remove()" style="background:transparent;border:none;color:var(--red);cursor:pointer;margin-left:4px;font-size:14px">×</button>';
+    document.body.appendChild(banner);
+  }, 3000);
+}
 if(GAS_URL){
-  // Auto-load from Drive on startup
-  setTimeout(()=>{ syncFromDrive(true); }, 1500);
+  // Startup: push local data to Drive (safe - only sends, never overwrites local)
+  // Then silently check if Drive has more data (only if local is empty)
+  setTimeout(()=>{ 
+    if(ogr.length === 0){
+      syncFromDrive(true); // Safe: local empty, load from Drive
+    } else {
+      syncToDrive(true); // Local has data: push to Drive
+    }
+  }, 2000);
 }
 
 /* iOS install hint (shows once) */
