@@ -549,7 +549,7 @@ function renderBugun(gunStr, gunIdx, kilitli){
             <span class="f15 fw7" style="color:${aldi?"var(--green)":"var(--txt)"}">${esc(o.isim)}</span>
             ${borclu?`<span class="badge badge-red">ÖDEME GEREKİYOR</span>`:""}
           </div>
-          <div class="f12 c-dim mt4">${esc(o.ders)} · ${s.saat}${o.ogretmen?' · '+esc(o.ogretmen):''}</div>
+          <div class="f12 c-dim mt4">${esc(s.ders||o.ders)} · ${s.saat}${(s.ogretmen||o.ogretmen)?' · '+esc(s.ogretmen||o.ogretmen):''}</div>
           <div class="f11 c-dim">Slot: ${GUNLER[s.gun]} ${s.saat} — ${Math.min(paket,4)}/4</div>
         </div>
         <div class="flex" style="flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0">
@@ -582,8 +582,9 @@ function renderProgram(){
       if(_ogretmenFilter==="tumu") return true;
       const o=ogr.find(x=>x.id===s.oid);
       if(!o) return false;
-      if(!o.ogretmen) return true;
-      return o.ogretmen===_ogretmenFilter;
+      const slotOgr = s.ogretmen || o.ogretmen || "";
+      if(!slotOgr) return true;
+      return slotOgr===_ogretmenFilter;
     });
     const isT=gi===B_IDX,isY=gi===Y_IDX;
     const colStyle=`background:${isT?"var(--brown)":"var(--card)"};border:1px solid ${isT?"var(--lime-bd)":isY?"rgba(168,212,0,.35)":"var(--card-bd)"};`;
@@ -601,7 +602,7 @@ function renderProgram(){
       html+=`<div class="prog-slot" style="background:${renk}18;border:1px solid ${renk}35" data-checklistAc="${o.id}" title="${esc(o.isim)} — ders geçmişi">
         <div class="f11 fw7" style="color:${renk}">${s.saat}</div>
         <div class="f11 ellipsis" style="color:var(--txt);margin-top:1px">${esc(o.isim.split(" ")[0])}</div>
-        <div class="f10 c-dim">${esc(o.ders)}</div>
+        <div class="f10 c-dim">${esc(s.ders||o.ders)}</div>
         <div class="dots mt4">${[1,2,3,4].map(i=>`<div class="dot" style="width:6px;height:6px;border:1.5px solid ${i<=p?renk:"var(--brown-bd)"};background:${i<=p?renk:"transparent"}"></div>`).join("")}</div>
         <button style="position:absolute;top:3px;right:4px;background:none;border:none;color:var(--brown-bd);cursor:pointer;font-size:13px;line-height:1" data-slotSil="${s.id}">×</button>
       </div>`;
@@ -721,7 +722,7 @@ function renderOgrenciler(){
           <span class="f14 fw6">${esc(o.isim)}</span>
           ${borclu?`<span class="badge badge-red">Ödeme Bekliyor</span>`:""}
         </div>
-        <div class="f12 c-dim mt4 ellipsis">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''}${o.tel?` · ${esc(o.tel)}`:""}${ogSlotlar.length?` · ${ogSlotlar.map(s=>GUN_SH[s.gun]+" "+s.saat).join(", ")}`:""}
+        <div class="f12 c-dim mt4 ellipsis">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''}${o.tel?` · ${esc(o.tel)}`:""}${ogSlotlar.length?` · ${ogSlotlar.map(s=>(s.ders||o.ders)+" "+GUN_SH[s.gun]+" "+s.saat).join(", ")}`:""}
         </div>
       </div>
       <div class="text-right" style="flex-shrink:0">
@@ -921,6 +922,10 @@ function modalYeniOgr(){
         <div><div class="lbl">Gün</div><select class="inp" id="f-gun"><option value="">—</option>${GUNLER.map((g,i)=>`<option value="${i}">${g}</option>`).join("")}</select></div>
         <div><div class="lbl">Saat</div><select class="inp" id="f-saat"><option value="">—</option>${SAATLER.map(s=>`<option>${s}</option>`).join("")}</select></div>
       </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><div class="lbl">Ders Türü</div><select class="inp" id="f-slot1-ders">${DERS_T.map(d=>`<option>${d}</option>`).join("")}</select></div>
+        <div><div class="lbl">Öğretmen</div><select class="inp" id="f-slot1-ogr"><option value="">—</option>${OGRETMENLER.map(og=>`<option>${og}</option>`).join("")}</select></div>
+      </div>
       <div id="ek-slotlar-wrap" style="display:none;margin-top:12px"></div>
     </div>
     <div class="flex flex-end gap8 mt4">
@@ -941,27 +946,37 @@ function modalYeniOgr(){
   function renderEkSlotlar(){
     const wrap=$("ek-slotlar-wrap");
     wrap.innerHTML=_ekSlotlar.map((es,i)=>`
-      <div style="margin-bottom:10px">
-        <div class="f12 c-dim mb8">${i+2}. Ders Slotu</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+      <div style="margin-bottom:12px;padding:10px 12px;background:var(--brown);border:1px solid var(--brown-bd);border-radius:6px">
+        <div class="flex flex-between flex-center mb8">
+          <div class="f12 fw6 c-dim">${i+2}. Ders Slotu</div>
+          <button style="background:transparent;border:none;color:var(--red);cursor:pointer;font-size:18px;line-height:1;padding:0" data-ekSil="${i}">×</button>
+        </div>
+        <div class="grid2" style="margin-bottom:8px">
           <div><div class="lbl">Gün</div><select class="inp ek-gun" data-idx="${i}"><option value="">—</option>${GUNLER.map((g,j)=>`<option value="${j}" ${es.gun==j?"selected":""}>${g}</option>`).join("")}</select></div>
           <div><div class="lbl">Saat</div><select class="inp ek-saat" data-idx="${i}">${SAATLER.map(s=>`<option ${es.saat===s?"selected":""}>${s}</option>`).join("")}</select></div>
-          <button style="background:transparent;border:1px solid var(--brown-bd);color:var(--red);padding:9px 12px;border-radius:4px;cursor:pointer;font-size:14px;line-height:1" data-ekSil="${i}">×</button>
+        </div>
+        <div class="grid2">
+          <div><div class="lbl">Ders Türü</div><select class="inp ek-ders" data-idx="${i}">${DERS_T.map(d=>`<option ${es.ders===d?"selected":""}>${d}</option>`).join("")}</select></div>
+          <div><div class="lbl">Öğretmen</div><select class="inp ek-ogr" data-idx="${i}"><option value="">—</option>${OGRETMENLER.map(og=>`<option ${es.ogretmen===og?"selected":""}>${og}</option>`).join("")}</select></div>
         </div>
       </div>`).join("")+
       `<button id="btn-ekSlotEkle" style="background:transparent;border:1px dashed var(--lime-bd);color:var(--lime);padding:7px 0;border-radius:4px;cursor:pointer;font-size:12px;width:100%;text-align:center">+ ${_ekSlotlar.length+2}. Slot Ekle</button>`;
     wrap.querySelectorAll(".ek-gun").forEach(el=>el.onchange=e=>{_ekSlotlar[+el.dataset.idx].gun=e.target.value;});
     wrap.querySelectorAll(".ek-saat").forEach(el=>el.onchange=e=>{_ekSlotlar[+el.dataset.idx].saat=e.target.value;});
+    wrap.querySelectorAll(".ek-ders").forEach(el=>el.onchange=e=>{_ekSlotlar[+el.dataset.idx].ders=e.target.value;});
+    wrap.querySelectorAll(".ek-ogr").forEach(el=>el.onchange=e=>{_ekSlotlar[+el.dataset.idx].ogretmen=e.target.value;});
     wrap.querySelectorAll("[data-ekSil]").forEach(btn=>btn.onclick=()=>{_ekSlotlar.splice(+btn.dataset.ekSil,1);renderEkSlotlar();});
-    $("btn-ekSlotEkle").onclick=()=>{_ekSlotlar.push({gun:"",saat:SAATLER[0]});renderEkSlotlar();};
+    $("btn-ekSlotEkle").onclick=()=>{_ekSlotlar.push({gun:"",saat:SAATLER[0],ders:DERS_T[0],ogretmen:""});renderEkSlotlar();};
   }
   $("btn-ogrKaydet").onclick=()=>{
     const isim=$("f-isim").value.trim();if(!isim)return;
     const yeni={id:nid(),isim,tel:$("f-tel").value,ders:$("f-ders").value,ogretmen:$("f-ogretmen").value,notlar:$("f-notlar").value,ucret:Number($("f-ucret").value)||0};
     ogr.push(yeni);
     const gun=$("f-gun").value,saat=$("f-saat").value;
-    if(gun!==""&&saat) slot.push({id:nid(),oid:yeni.id,gun:Number(gun),saat});
-    _ekSlotlar.forEach(es=>{if(es.gun!=="")slot.push({id:nid(),oid:yeni.id,gun:Number(es.gun),saat:es.saat||SAATLER[0]});});
+    const slot1ders=$("f-slot1-ders")?.value||$("f-ders").value;
+    const slot1ogr=$("f-slot1-ogr")?.value||"";
+    if(gun!==""&&saat) slot.push({id:nid(),oid:yeni.id,gun:Number(gun),saat,ders:slot1ders,ogretmen:slot1ogr});
+    _ekSlotlar.forEach(es=>{if(es.gun!=="")slot.push({id:nid(),oid:yeni.id,gun:Number(es.gun),saat:es.saat||SAATLER[0],ders:es.ders||DERS_T[0],ogretmen:es.ogretmen||""});});
     persist();closeOverlay();render();
   };
 }
@@ -974,6 +989,10 @@ function modalYeniSlot(){
       <div><div class="lbl">Gün *</div><select class="inp" id="f-slotGun"><option value="">Seçin</option>${GUNLER.map((g,i)=>`<option value="${i}">${g}</option>`).join("")}</select></div>
       <div><div class="lbl">Saat *</div><select class="inp" id="f-slotSaat"><option value="">Seçin</option>${SAATLER.map(s=>`<option>${s}</option>`).join("")}</select></div>
     </div>
+    <div class="grid2">
+      <div><div class="lbl">Ders Türü *</div><select class="inp" id="f-slotDers">${DERS_T.map(d=>`<option>${d}</option>`).join("")}</select></div>
+      <div><div class="lbl">Öğretmen</div><select class="inp" id="f-slotOgr"><option value="">—</option>${OGRETMENLER.map(og=>`<option>${og}</option>`).join("")}</select></div>
+    </div>
     <div class="flex flex-end gap8 mt4">
       <button class="btn-o" onclick="closeOverlay()">İptal</button>
       <button class="btn" id="btn-slotKaydet">Ekle</button>
@@ -981,8 +1000,9 @@ function modalYeniSlot(){
   </div>`);
   $("btn-slotKaydet").onclick=()=>{
     const oid=Number($("f-slotOid").value),gun=$("f-slotGun").value,saat=$("f-slotSaat").value;
+    const ders=$("f-slotDers").value,ogretmen=$("f-slotOgr").value;
     if(!oid||gun===""|!saat)return;
-    slot.push({id:nid(),oid,gun:Number(gun),saat});
+    slot.push({id:nid(),oid,gun:Number(gun),saat,ders,ogretmen});
     persist();closeOverlay();render();
   };
 }
@@ -1123,11 +1143,11 @@ function modalChecklist(oid){
   } else if(ogSlotlar.length === 1){
     // Single slot
     const s = ogSlotlar[0];
-    html += slotPaketHTML(oid, s.id, `${GUNLER[s.gun]} ${s.saat} Dersi`, renk);
+    html += slotPaketHTML(oid, s.id, `${s.ders||o.ders} — ${GUNLER[s.gun]} ${s.saat}`, renk);
   } else {
     // Multiple slots: each gets its own section
     ogSlotlar.forEach(s => {
-      html += slotPaketHTML(oid, s.id, `${GUNLER[s.gun]} ${s.saat} Dersi`, renk);
+      html += slotPaketHTML(oid, s.id, `${s.ders||o.ders} — ${GUNLER[s.gun]} ${s.saat}`, renk);
     });
   }
 
