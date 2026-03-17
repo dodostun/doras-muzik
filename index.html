@@ -606,6 +606,33 @@ function renderHaftalik(){
     html+=`<div class="card p20"><div class="f10 fw6 upper ls1 c-dim mb8">${l}</div><div class="f24 fw8" style="color:${c}">${v}</div></div>`;
   });
   html+=`</div>`;
+
+  // Son 6 ayın özeti
+  const ayOzetler = [];
+  for(let i=0; i<6; i++){
+    const d = new Date(BU_YIL, BU_AY-i, 1);
+    const ay = d.getMonth(), yil = d.getFullYear();
+    const ayOdm = odm.filter(o=>o.ay===ay && o.yil===yil);
+    ayOzetler.push({ay, yil, toplam: ayOdm.reduce((s,o)=>s+o.tutar,0), sayi: ayOdm.length});
+  }
+  const maxToplam = Math.max(...ayOzetler.map(x=>x.toplam), 1);
+
+  html += `<div class="f10 fw7 upper ls1 c-dim mb10 mt18">Son 6 Ay Özeti</div>
+    <div class="card p16">`;
+  ayOzetler.forEach((a,i)=>{
+    const pct = Math.round((a.toplam/maxToplam)*100);
+    const isAktif = i===0;
+    html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:${i<5?'10':'0'}px">
+      <div style="width:70px;font-size:11px;color:${isAktif?'var(--lime)':'var(--txt-dim)'};">${AYLAR[a.ay].slice(0,3)} ${a.yil}</div>
+      <div style="flex:1;background:var(--brown-bd);border-radius:3px;height:18px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${isAktif?'var(--lime)':'var(--lime-dd)'};border-radius:3px;transition:width .3s"></div>
+      </div>
+      <div style="width:70px;text-align:right;font-size:12px;font-weight:700;color:${isAktif?'var(--lime)':'var(--txt-mid)'}">${fmtEur(a.toplam)}</div>
+      <div style="width:45px;text-align:right;font-size:10px;color:var(--txt-dim)">${a.sayi} ödm</div>
+    </div>`;
+  });
+  html += `</div>`;
+
   return html;
 }
 
@@ -679,18 +706,79 @@ function renderGecikme(){
 }
 
 function renderGecmis(){
-  let html=`<div class="page-title mb18">Ödeme Geçmişi</div><div class="card">`;
-  if(!odm.length) html+=`<div class="p24 text-center f13 c-dim">Henüz ödeme kaydı yok.</div>`;
-  [...odm].reverse().forEach(o=>{
-    const og=ogr.find(x=>x.id===o.oid);const renk=ogrRenk(o.oid);
-    const slotBilgi = o.slot_id ? ` · ${slotuBul(o.slot_id)}` : '';
-    html+=`<div class="card-row" style="cursor:default">
-      <div class="flex1"><div class="f14 fw5">${esc(og?.isim||"—")}</div><div class="f11 c-dim">${esc(o.aciklama)}${slotBilgi} · ${fmtD(o.tarih)}</div></div>
-      <span class="badge" style="background:${renk}18;color:${renk};flex-shrink:0">${AYLAR[o.ay]} ${o.yil}</span>
-      <div class="f18 fw7 c-lime" style="flex-shrink:0">${fmtEur(o.tutar)}</div>
-    </div>`;
+  if(!odm.length){
+    return `<div class="page-title mb18">Ödeme Geçmişi</div>
+      <div class="card p24 text-center f13 c-dim">Henüz ödeme kaydı yok.</div>`;
+  }
+
+  // Tüm ödemeleri ay bazında grupla
+  const ayGruplari = {};
+  [...odm].sort((a,b)=>b.tarih.localeCompare(a.tarih)).forEach(o=>{
+    const key = `${o.yil}-${String(o.ay+1).padStart(2,"0")}`;
+    if(!ayGruplari[key]) ayGruplari[key] = {yil:o.yil, ay:o.ay, odemeler:[], toplam:0};
+    ayGruplari[key].odemeler.push(o);
+    ayGruplari[key].toplam += o.tutar;
   });
-  html+=`</div>`;
+
+  const ayKeys = Object.keys(ayGruplari).sort().reverse();
+  const genelToplam = odm.reduce((s,o)=>s+o.tutar,0);
+  const buAyKey = `${BU_YIL}-${String(BU_AY+1).padStart(2,"0")}`;
+  const buAyToplam = ayGruplari[buAyKey]?.toplam || 0;
+  const gecenAyD = new Date(BU_YIL, BU_AY-1, 1);
+  const gecenAyKey = `${gecenAyD.getFullYear()}-${String(gecenAyD.getMonth()+1).padStart(2,"0")}`;
+  const gecenAyToplam = ayGruplari[gecenAyKey]?.toplam || 0;
+
+  let html = `<div class="page-title mb18">Ödeme Geçmişi</div>`;
+
+  // Özet kartlar
+  html += `<div class="grid3 mb18">
+    <div class="card p20">
+      <div class="f10 fw6 upper ls1 c-dim mb6">Bu Ay</div>
+      <div class="f24 fw8 c-lime">${fmtEur(buAyToplam)}</div>
+      <div class="f11 c-dim mt4">${AYLAR[BU_AY]} ${BU_YIL}</div>
+    </div>
+    <div class="card p20">
+      <div class="f10 fw6 upper ls1 c-dim mb6">Geçen Ay</div>
+      <div class="f24 fw8" style="color:var(--txt-mid)">${fmtEur(gecenAyToplam)}</div>
+      <div class="f11 c-dim mt4">${AYLAR[gecenAyD.getMonth()]} ${gecenAyD.getFullYear()}</div>
+    </div>
+    <div class="card p20">
+      <div class="f10 fw6 upper ls1 c-dim mb6">Toplam</div>
+      <div class="f24 fw8 c-lime">${fmtEur(genelToplam)}</div>
+      <div class="f11 c-dim mt4">${odm.length} ödeme</div>
+    </div>
+  </div>`;
+
+  // Her ay için grup
+  ayKeys.forEach(key => {
+    const grp = ayGruplari[key];
+    const isAktif = key === buAyKey;
+    html += `<div style="margin-bottom:18px">
+      <div class="flex flex-between flex-center mb8">
+        <div class="flex flex-center gap8">
+          <div class="f14 fw7" style="color:${isAktif?'var(--lime)':'var(--txt-mid)'}">${AYLAR[grp.ay]} ${grp.yil}</div>
+          ${isAktif?`<span class="badge badge-lime">Bu Ay</span>`:''}
+        </div>
+        <div class="f16 fw7 c-lime">${fmtEur(grp.toplam)}</div>
+      </div>
+      <div class="card">`;
+    grp.odemeler.forEach(o=>{
+      const og=ogr.find(x=>x.id===o.oid);
+      const renk=ogrRenk(o.oid);
+      const slotBilgi = o.slot_id ? ` · ${slotuBul(o.slot_id)}` : '';
+      html+=`<div class="card-row" style="cursor:default">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0"></div>
+        <div class="flex1 mw0">
+          <div class="f13 fw6 ellipsis">${esc(og?.isim||"—")}</div>
+          <div class="f11 c-dim">${fmtD(o.tarih)}${slotBilgi} · ${esc(o.aciklama)}</div>
+        </div>
+        <span class="badge" style="background:${renk}18;color:${renk};flex-shrink:0">${esc(og?.ders||'')}</span>
+        <div class="f15 fw7 c-lime" style="flex-shrink:0">${fmtEur(o.tutar)}</div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  });
+
   return html;
 }
 
@@ -985,9 +1073,24 @@ function modalChecklist(oid){
       </div>`;
     });
   }
-  html += `</div><div class="flex flex-end"><button class="btn-o" onclick="closeOverlay()">Kapat</button></div>`;
+  html += `</div>
+    <div class="flex flex-between flex-center mt4">
+      <button class="btn-danger" onclick="ogrSil(${oid})">🗑 Öğrenciyi Sil</button>
+      <button class="btn-o" onclick="closeOverlay()">Kapat</button>
+    </div>`;
 
   showOverlay(html);
+}
+
+function ogrSil(oid){
+  const o = ogr.find(x=>x.id===oid);
+  if(!o) return;
+  if(!confirm(o.isim + " silinsin mi?\nTüm ders ve ödeme kayıtları da silinecek.")) return;
+  ogr  = ogr.filter(x=>x.id!==oid);
+  slot = slot.filter(x=>x.oid!==oid);
+  drs  = drs.filter(x=>x.oid!==oid);
+  odm  = odm.filter(x=>x.oid!==oid);
+  persist(); closeOverlay(); render();
 }
 
 function slotPaketHTML(oid, slotId, baslik, renk){
