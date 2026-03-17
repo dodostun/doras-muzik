@@ -224,6 +224,7 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
       <button class="tab-btn" data-tab="ogrenciler">👥 Öğrenciler</button>
       <button class="tab-btn" data-tab="gecikme">⚠ Borçlular</button>
       <button class="tab-btn" data-tab="gecmis">📜 Geçmiş</button>
+      <button class="tab-btn" data-tab="muhasebe">📊 Muhasebe</button>
     </div>
   </div>
   <div id="main"></div>
@@ -242,7 +243,7 @@ const GUN_SH = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"];
 const DERS_T = ["Piyano","Gitar","Keman","Bateri","Ses","Flüt","Diğer"];
 const OGRETMENLER = ["Doğukan Özel","Büşra Özel"];
 const AYLAR  = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
-const SAATLER= Array.from({length:14},(_,i)=>`${String(i+8).padStart(2,"0")}:00`);
+const SAATLER= Array.from({length:28},(_,i)=>{const h=Math.floor(i/2)+8;const m=i%2===0?"00":"30";return `${String(h).padStart(2,"0")}:${m}`;});
 const RENKLER= ["#a8d400","#50e080","#60b8e0","#d0a040","#e05050","#c070d0","#40d8c0"];
 const BUGUN  = new Date();
 const BU_AY  = BUGUN.getMonth();
@@ -727,18 +728,66 @@ function slotuBul(slotId){
 }
 
 function renderOgrenciler(){
-  let html=`<div class="flex flex-between flex-center flex-wrap gap8 mb22">
-    <div class="page-title">Öğrenci Listesi</div>
+  const _filtre = window._ogrFiltre || "isim";
+  const _filtreDers = window._ogrFiltreDers || "tumu";
+  const _filtreOgr = window._ogrFiltreOgr || "tumu";
+
+  // Filtreleme
+  let liste = [...ogr];
+  if(_filtreDers !== "tumu") liste = liste.filter(o=>o.ders===_filtreDers);
+  if(_filtreOgr !== "tumu") liste = liste.filter(o=>{
+    // Öğrencinin herhangi bir slotunda bu öğretmen varsa göster
+    const oSlotlar = slot.filter(s=>s.oid===o.id);
+    const slotOgr = oSlotlar.some(s=>s.ogretmen===_filtreOgr);
+    return slotOgr || o.ogretmen===_filtreOgr;
+  });
+
+  // Sıralama
+  if(_filtre === "isim") liste.sort((a,b)=>a.isim.localeCompare(b.isim,"tr"));
+  else if(_filtre === "ders") liste.sort((a,b)=>a.ders.localeCompare(b.ders,"tr"));
+  else if(_filtre === "ucret") liste.sort((a,b)=>b.ucret-a.ucret);
+  else if(_filtre === "odeme"){
+    liste.sort((a,b)=>{
+      const pa = paketDur(a.id,drs,odm);
+      const pb = paketDur(b.id,drs,odm);
+      return pb-pa; // En yakın ödeme önce
+    });
+  }
+
+  const dersList = [...new Set(ogr.map(o=>o.ders))].sort();
+  const ogrList  = [...new Set([
+    ...ogr.map(o=>o.ogretmen).filter(Boolean),
+    ...slot.map(s=>s.ogretmen).filter(Boolean)
+  ])].sort();
+
+  let html=`<div class="flex flex-between flex-center flex-wrap gap8 mb14">
+    <div class="page-title">Öğrenci Listesi (${liste.length})</div>
     <div class="flex gap8 flex-wrap">
       <button class="btn-o" id="btn-duzenleAra">✏️ Öğrenci Düzenle</button>
       <button class="btn" id="btn-yeniOgr">+ Öğrenci Ekle</button>
     </div>
   </div>
+  <div class="flex gap8 flex-wrap mb14" style="align-items:center">
+    <div class="f11 fw6 c-dim upper ls1">Filtrele:</div>
+    <select class="inp" id="ogr-filtre-ders" style="font-size:11px;padding:5px 8px;width:auto">
+      <option value="tumu">Tüm Dersler</option>
+      ${dersList.map(d=>`<option value="${d}" ${_filtreDers===d?"selected":""}>${d}</option>`).join("")}
+    </select>
+    <select class="inp" id="ogr-filtre-ogr" style="font-size:11px;padding:5px 8px;width:auto">
+      <option value="tumu">Tüm Öğretmenler</option>
+      ${ogrList.map(og=>`<option value="${og}" ${_filtreOgr===og?"selected":""}>${og}</option>`).join("")}
+    </select>
+    <div class="f11 fw6 c-dim upper ls1" style="margin-left:4px">Sırala:</div>
+    ${[["isim","İsim"],["ders","Ders"],["ucret","Ücret"],["odeme","Ödeme"]].map(([v,l])=>
+      `<button onclick="window._ogrFiltre='${v}';render()" class="${_filtre===v?"btn":"btn-ghost"}" style="font-size:11px;padding:5px 10px">${l}</button>`
+    ).join("")}
+  </div>
   <div id="ogr-arama-wrap"></div>
   <div class="card">`;
-  if(!ogr.length) html+=`<div class="p24 text-center f13 c-dim">Henüz öğrenci eklenmedi.</div>`;
-  ogr.forEach((o,i)=>{
-    const renk=RENKLER[i%RENKLER.length];
+  if(!liste.length) html+=`<div class="p24 text-center f13 c-dim">${ogr.length?'Filtre sonucu boş.':'Henüz öğrenci eklenmedi.'}</div>`;
+  liste.forEach((o,i)=>{
+    const idx = ogr.indexOf(o);
+    const renk=RENKLER[idx%RENKLER.length];
     const ogSlotlar=slot.filter(s=>s.oid===o.id);
     // Check if any slot is overdue
     const borclu = ogSlotlar.length
@@ -1323,6 +1372,192 @@ function odemeAlVeSifirla(oid, slotId){
 
 
 
+function renderMuhasebe(){
+  // ── Temel istatistikler ──
+  const toplamOgr = ogr.length;
+  const toplamSlot = slot.length;
+  const borcluSayisi = borcluList().length;
+  const toplamOdm = odm.reduce((s,o)=>s+o.tutar, 0);
+  const buAyOdm = odm.filter(o=>o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+o.tutar,0);
+  const gecenAyD = new Date(BU_YIL,BU_AY-1,1);
+  const gecenAyOdm = odm.filter(o=>o.ay===gecenAyD.getMonth()&&o.yil===gecenAyD.getFullYear()).reduce((s,o)=>s+o.tutar,0);
+  const aylikPotansiyel = ogr.reduce((s,o)=>{
+    const oSlotlar = slot.filter(sl=>sl.oid===o.id);
+    return s + (oSlotlar.length||1) * o.ucret;
+  }, 0);
+  const toplamGelmedi = gmd.length;
+
+  // ── Ders bazlı ──
+  const dersBazli = {};
+  DERS_T.forEach(d=>{dersBazli[d]={ogr:0,slot:0,aylik:0};});
+  ogr.forEach(o=>{
+    const oSlotlar = slot.filter(s=>s.oid===o.id);
+    if(!oSlotlar.length){
+      const d = o.ders||"Diğer";
+      if(!dersBazli[d]) dersBazli[d]={ogr:0,slot:0,aylik:0};
+      dersBazli[d].ogr++;
+      dersBazli[d].aylik += o.ucret;
+    } else {
+      oSlotlar.forEach(s=>{
+        const d = s.ders||o.ders||"Diğer";
+        if(!dersBazli[d]) dersBazli[d]={ogr:0,slot:0,aylik:0};
+        dersBazli[d].slot++;
+        dersBazli[d].aylik += o.ucret;
+      });
+      dersBazli[o.ders||"Diğer"].ogr++;
+    }
+  });
+
+  // ── Öğretmen bazlı ──
+  const ogrBazli = {};
+  OGRETMENLER.forEach(og=>{ogrBazli[og]={ogr:new Set(),slot:0,aylik:0,buAy:0};});
+  ogrBazli["Atanmamış"] = {ogr:new Set(),slot:0,aylik:0,buAy:0};
+
+  ogr.forEach(o=>{
+    const oSlotlar = slot.filter(s=>s.oid===o.id);
+    if(!oSlotlar.length){
+      const key = o.ogretmen||"Atanmamış";
+      if(!ogrBazli[key]) ogrBazli[key]={ogr:new Set(),slot:0,aylik:0,buAy:0};
+      ogrBazli[key].ogr.add(o.id);
+      ogrBazli[key].aylik += o.ucret;
+    } else {
+      oSlotlar.forEach(s=>{
+        const key = s.ogretmen||o.ogretmen||"Atanmamış";
+        if(!ogrBazli[key]) ogrBazli[key]={ogr:new Set(),slot:0,aylik:0,buAy:0};
+        ogrBazli[key].ogr.add(o.id);
+        ogrBazli[key].slot++;
+        ogrBazli[key].aylik += o.ucret;
+      });
+    }
+  });
+  // Bu ay öğretmen bazlı gelir
+  odm.filter(o=>o.ay===BU_AY&&o.yil===BU_YIL).forEach(od=>{
+    const og2 = ogr.find(x=>x.id===od.oid);
+    if(!og2) return;
+    const oSlotlar = slot.filter(s=>s.oid===og2.id);
+    const key = (od.slot_id ? (oSlotlar.find(s=>s.id===od.slot_id)?.ogretmen) : null) || og2.ogretmen || "Atanmamış";
+    if(!ogrBazli[key]) ogrBazli[key]={ogr:new Set(),slot:0,aylik:0,buAy:0};
+    ogrBazli[key].buAy += od.tutar;
+  });
+
+  // ── Son 12 ay ──
+  const sonAylar = [];
+  for(let i=11;i>=0;i--){
+    const d=new Date(BU_YIL,BU_AY-i,1);
+    const ay=d.getMonth(),yil=d.getFullYear();
+    const toplam=odm.filter(o=>o.ay===ay&&o.yil===yil).reduce((s,o)=>s+o.tutar,0);
+    const sayi=odm.filter(o=>o.ay===ay&&o.yil===yil).length;
+    sonAylar.push({ay,yil,toplam,sayi,label:AYLAR[ay].slice(0,3)+" '"+String(yil).slice(2)});
+  }
+  const maxAy = Math.max(...sonAylar.map(x=>x.toplam), 1);
+
+  let html = `<div class="page-title mb18">📊 Muhasebe & Raporlar</div>`;
+
+  // ── Özet kartlar ──
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px">`;
+  [
+    ["👥 Toplam Öğrenci", toplamOgr+" kişi", "var(--lime)"],
+    ["📅 Toplam Slot", toplamSlot+" slot", "var(--lime)"],
+    ["💰 Bu Ay", fmtEur(buAyOdm), "var(--green)"],
+    ["📆 Geçen Ay", fmtEur(gecenAyOdm), "var(--txt-mid)"],
+    ["🎯 Aylık Potansiyel", fmtEur(aylikPotansiyel), "var(--lime)"],
+    ["📈 Toplam Gelir", fmtEur(toplamOdm), "var(--green)"],
+    ["⚠ Ödeme Bekleyen", borcluSayisi+" öğrenci", borcluSayisi>0?"var(--red)":"var(--green)"],
+    ["😔 Gelmedi Kaydı", toplamGelmedi+" ders", toplamGelmedi>0?"var(--red)":"var(--txt-dim)"],
+  ].forEach(([l,v,c])=>{
+    html+=`<div class="card p16"><div class="f10 fw6 upper ls1 c-dim mb6">${l}</div><div class="f20 fw8" style="color:${c}">${v}</div></div>`;
+  });
+  html += `</div>`;
+
+  // ── 12 aylık bar chart ──
+  html += `<div class="card p20 mb16">
+    <div class="f13 fw7 c-lime mb14">Son 12 Ay Gelir Grafiği</div>
+    <div style="display:flex;align-items:flex-end;gap:6px;height:100px">`;
+  sonAylar.forEach((a,i)=>{
+    const h = Math.max(Math.round((a.toplam/maxAy)*90), a.toplam>0?4:0);
+    const isAktif = i===11;
+    html+=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-size:9px;color:${isAktif?'var(--lime)':'var(--txt-dim)'};font-weight:${isAktif?'700':'400'}">${a.toplam>0?fmtEur(a.toplam):''}</div>
+      <div style="width:100%;height:${h}px;background:${isAktif?'var(--lime)':'var(--lime-dd)'};border-radius:3px 3px 0 0;min-height:${a.toplam>0?4:0}px"></div>
+      <div style="font-size:9px;color:${isAktif?'var(--lime)':'var(--txt-dim)'};text-align:center;white-space:nowrap">${a.label}</div>
+    </div>`;
+  });
+  html += `</div></div>`;
+
+  // ── Ders bazlı tablo ──
+  html += `<div class="grid2 mb16">`;
+  html += `<div class="card p16">
+    <div class="f13 fw7 c-lime mb12">Derse Göre Dağılım</div>`;
+  const aktifDersler = Object.entries(dersBazli).filter(([,v])=>v.ogr>0||v.slot>0).sort((a,b)=>b[1].slot+b[1].ogr - (a[1].slot+a[1].ogr));
+  if(!aktifDersler.length){
+    html+=`<div class="f12 c-dim">Henüz ders kaydı yok.</div>`;
+  } else {
+    aktifDersler.forEach(([ders,v])=>{
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--card-bd)">
+        <div><div class="f13 fw6">${esc(ders)}</div><div class="f10 c-dim">${v.ogr} öğrenci · ${v.slot} slot</div></div>
+        <div class="f13 fw7 c-lime">${fmtEur(v.aylik)}<span class="f10 c-dim fw4">/ay</span></div>
+      </div>`;
+    });
+  }
+  html += `</div>`;
+
+  // ── Öğretmen bazlı tablo ──
+  html += `<div class="card p16">
+    <div class="f13 fw7 c-lime mb12">Öğretmene Göre Dağılım</div>`;
+  const aktifOgrs = Object.entries(ogrBazli).filter(([,v])=>v.ogr.size>0).sort((a,b)=>b[1].ogr.size-a[1].ogr.size);
+  if(!aktifOgrs.length){
+    html+=`<div class="f12 c-dim">Öğretmen atanmamış.</div>`;
+  } else {
+    aktifOgrs.forEach(([ogr2,v])=>{
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--card-bd)">
+        <div>
+          <div class="f13 fw6">${esc(ogr2)}</div>
+          <div class="f10 c-dim">${v.ogr.size} öğrenci · ${v.slot} slot</div>
+          <div class="f10" style="color:var(--green)">Bu ay: ${fmtEur(v.buAy)}</div>
+        </div>
+        <div class="f13 fw7 c-lime">${fmtEur(v.aylik)}<span class="f10 c-dim fw4">/ay pot.</span></div>
+      </div>`;
+    });
+  }
+  html += `</div></div>`;
+
+  // ── Öğrenci bazlı detay tablosu ──
+  html += `<div class="card p16 mb16">
+    <div class="f13 fw7 c-lime mb12">Öğrenci Detay Tablosu</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid var(--lime-bd)">
+          <th style="text-align:left;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Öğrenci</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Ders/Slot</th>
+          <th style="text-align:center;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Paket</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Paket €</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Toplam Ödedi</th>
+          <th style="text-align:center;padding:6px 8px;color:var(--txt-dim);font-size:10px;text-transform:uppercase;letter-spacing:.1em">Durum</th>
+        </tr></thead>
+        <tbody>`;
+  [...ogr].sort((a,b)=>a.isim.localeCompare(b.isim,"tr")).forEach(o=>{
+    const oSlotlar = slot.filter(s=>s.oid===o.id);
+    const p = paketDur(o.id,drs,odm);
+    const toplamOdedi = odm.filter(x=>x.oid===o.id).reduce((s,x)=>s+x.tutar,0);
+    const borclu = p>=4;
+    const dersler = oSlotlar.length ? [...new Set(oSlotlar.map(s=>s.ders||o.ders))].join(", ") : o.ders;
+    html+=`<tr style="border-bottom:1px solid var(--card-bd)">
+      <td style="padding:7px 8px;font-weight:600">${esc(o.isim)}</td>
+      <td style="padding:7px 8px;color:var(--txt-dim)">${esc(dersler)}${oSlotlar.length?` <span style="color:var(--lime-d)">(${oSlotlar.length} slot)</span>`:''}</td>
+      <td style="padding:7px 8px;text-align:center">
+        <div style="display:flex;gap:3px;justify-content:center">${[1,2,3,4].map(i=>`<div style="width:8px;height:8px;border-radius:50%;background:${i<=Math.min(p,4)?ogrRenk(o.id):'var(--brown-bd)'};border:1px solid ${i<=Math.min(p,4)?ogrRenk(o.id):'var(--brown-bd)'}"></div>`).join('')}</div>
+        <div style="font-size:10px;color:var(--txt-dim);margin-top:2px">${Math.min(p,4)}/4</div>
+      </td>
+      <td style="padding:7px 8px;text-align:right;font-weight:700;color:var(--lime)">${fmtEur(o.ucret)}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--green)">${fmtEur(toplamOdedi)}</td>
+      <td style="padding:7px 8px;text-align:center"><span class="badge ${borclu?'badge-red':'badge-lime'}">${borclu?'⚠ Ödeme':'✓ Güncel'}</span></td>
+    </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+
+  return html;
+}
+
 /* ══════════════════════════
    MAIN RENDER
 ══════════════════════════ */
@@ -1348,6 +1583,7 @@ function render(){
     case "ogrenciler":main.innerHTML=renderOgrenciler(); break;
     case "gecikme": main.innerHTML=renderGecikme(); break;
     case "gecmis":  main.innerHTML=renderGecmis(); break;
+    case "muhasebe":main.innerHTML=renderMuhasebe(); break;
   }
 
   // Event delegation
@@ -1490,6 +1726,14 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
 document.addEventListener('change', e=>{
   if(e.target.id==='prog-ogretmen-filter'){
     window._progOgretmenFilter = e.target.value;
+    render();
+  }
+  if(e.target.id==='ogr-filtre-ders'){
+    window._ogrFiltreDers = e.target.value;
+    render();
+  }
+  if(e.target.id==='ogr-filtre-ogr'){
+    window._ogrFiltreOgr = e.target.value;
     render();
   }
 });
@@ -1671,6 +1915,14 @@ document.getElementById('btn-syncFrom').onclick = () => syncFromDrive();
 document.addEventListener('change', e=>{
   if(e.target.id==='prog-ogretmen-filter'){
     window._progOgretmenFilter = e.target.value;
+    render();
+  }
+  if(e.target.id==='ogr-filtre-ders'){
+    window._ogrFiltreDers = e.target.value;
+    render();
+  }
+  if(e.target.id==='ogr-filtre-ogr'){
+    window._ogrFiltreOgr = e.target.value;
     render();
   }
 });
