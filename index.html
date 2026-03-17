@@ -1091,12 +1091,15 @@ function modalChecklist(oid){
   
   // Header
   let html = `
-    <div class="flex flex-center gap12 mb16">
-      <div style="width:44px;height:44px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
-      <div>
-        <div class="f18 fw7 c-lime">${esc(o.isim)}</div>
-        <div class="f11 c-dim">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''} · ${fmtEur(o.ucret)}/paket</div>
+    <div class="flex flex-between flex-center mb16">
+      <div class="flex flex-center gap12">
+        <div style="width:44px;height:44px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
+        <div>
+          <div class="f18 fw7 c-lime">${esc(o.isim)}</div>
+          <div class="f11 c-dim">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''} · ${fmtEur(o.ucret)}/paket</div>
+        </div>
       </div>
+      <button onclick="closeOverlay();setTimeout(()=>gosterDuzenleForm(${oid}),80)" class="btn-o" style="font-size:12px;padding:7px 12px;flex-shrink:0">✏️ Düzenle</button>
     </div>`;
 
   if(ogSlotlar.length === 0){
