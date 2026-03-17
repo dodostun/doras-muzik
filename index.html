@@ -241,6 +241,16 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
 const GUNLER = ["Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi","Pazar"];
 const GUN_SH = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"];
 const DERS_T = ["Piyano","Gitar","Keman","Bateri","Ses","Flüt","Diğer"];
+const DERS_RENK = {
+  "Piyano": {bg:"#1a1030", border:"#7c3aed", text:"#a78bfa", glow:"rgba(124,58,237,.35)"},   // Mor - zarafet
+  "Gitar":  {bg:"#1a1000", border:"#d97706", text:"#fbbf24", glow:"rgba(217,119,6,.35)"},    // Amber - sıcak ahşap
+  "Keman":  {bg:"#0f1a10", border:"#16a34a", text:"#4ade80", glow:"rgba(22,163,74,.35)"},    // Yeşil - klasik
+  "Bateri": {bg:"#1a0a00", border:"#ea580c", text:"#fb923c", glow:"rgba(234,88,12,.35)"},    // Turuncu - enerji
+  "Ses":    {bg:"#001a1a", border:"#0891b2", text:"#22d3ee", glow:"rgba(8,145,178,.35)"},    // Cyan - hava
+  "Flüt":   {bg:"#1a0f15", border:"#db2777", text:"#f472b6", glow:"rgba(219,39,119,.35)"},  // Pembe - zariflik
+  "Diğer":  {bg:"#111300", border:"#6b7280", text:"#9ca3af", glow:"rgba(107,114,128,.25)"}  // Gri
+};
+function dersRenk(ders){ return DERS_RENK[ders] || DERS_RENK["Diğer"]; }
 const OGRETMENLER = ["Doğukan Özel","Büşra Özel"];
 const AYLAR  = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 const SAATLER= Array.from({length:28},(_,i)=>{const h=Math.floor(i/2)+8;const m=i%2===0?"00":"30";return `${String(h).padStart(2,"0")}:${m}`;});
@@ -560,13 +570,15 @@ function renderBugun(gunStr, gunIdx, kilitli){
         pencerebitis = simdi > dersBitis;
       }
 
+      const slotDers2 = s.ders||o.ders||"Diğer";
+      const dr2 = dersRenk(slotDers2);
       const neonStyle = aktifPencere && !aldi && !gelmediKayit
-        ? `box-shadow:0 0 18px ${renk}55, 0 0 6px ${renk}33; border-color:${renk}; animation:neonPulse 2s ease-in-out infinite;`
+        ? `box-shadow:0 0 20px ${dr2.glow}, 0 0 8px ${dr2.glow}; border-color:${dr2.border}; background:${dr2.bg}; animation:neonPulse 2s ease-in-out infinite;`
         : gelmediKayit
         ? `border-color:var(--red);background:var(--red-bg);`
         : aldi
-        ? ``
-        : ``;
+        ? `border-left:3px solid ${dr2.border};background:var(--green-bg);`
+        : `border-left:3px solid ${dr2.border};background:${dr2.bg};`;
 
       html+=`<div class="day-card${aldi?" done":""}" data-checklistAc="${o.id}" style="cursor:pointer;${neonStyle}" title="${esc(o.isim)} — kayıtlara git">
         <div class="${tikClass}" ${!kilitli&&!aldi&&!gelmediKayit?`onclick="event.stopPropagation();dersKayitSor(${o.id},${s.id},'${gunStr}','${s.saat||''}')" style="cursor:pointer"`:""} title="${kilitli?"Önizleme":aldi?"İşaretlendi":gelmediKayit?"Gelmedi 😔":"Tıkla — ders aldı"}">${aldi?"✓":gelmediKayit?"✗":""}</div>
@@ -574,10 +586,10 @@ function renderBugun(gunStr, gunIdx, kilitli){
           <div class="flex flex-center gap8 flex-wrap">
             <span class="f15 fw7" style="color:${aldi?"var(--green)":gelmediKayit?"var(--red)":"var(--txt)"}">${esc(o.isim)}</span>
             ${borclu?`<span class="badge badge-red">ÖDEME GEREKİYOR</span>`:""}
-            ${aktifPencere&&!aldi&&!gelmediKayit?`<span class="badge" style="background:${renk}22;color:${renk};animation:neonPulse 2s infinite">● Ders Vakti</span>`:""}
+            ${aktifPencere&&!aldi&&!gelmediKayit?`<span class="badge" style="background:${dr2.border}33;color:${dr2.text};border:1px solid ${dr2.border};animation:neonPulse 2s infinite">● Ders Vakti</span>`:""}
             ${gelmediKayit?`<span class="badge badge-red">😔 Gelmedi — ${fmtD(gelmediKayit.tarih)}</span>`:""}
           </div>
-          <div class="f12 c-dim mt4">${esc(s.ders||o.ders)} · ${s.saat}${(s.ogretmen||o.ogretmen)?' · '+esc(s.ogretmen||o.ogretmen):''}</div>
+          <div class="f12 mt4" style="color:${dr2.text}">${esc(s.ders||o.ders)} · ${s.saat}${(s.ogretmen||o.ogretmen)?' · '+esc(s.ogretmen||o.ogretmen):''}</div>
           <div class="f11 c-dim">Slot: ${GUNLER[s.gun]} ${s.saat} — ${Math.min(paket,4)}/4</div>
         </div>
         <div class="flex" style="flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0">
@@ -628,13 +640,18 @@ function renderProgram(){
     gs.forEach(s=>{
       const o=ogr.find(x=>x.id===s.oid);if(!o)return;
       const renk=ogrRenk(o.id);
+      const slotDers = s.ders||o.ders||"Diğer";
+      const dr = dersRenk(slotDers);
       const p=Math.min(paketDurSlot(o.id, s.id, drs, odm),4);
-      html+=`<div class="prog-slot" style="background:${renk}18;border:1px solid ${renk}35" data-checklistAc="${o.id}" title="${esc(o.isim)} — ders geçmişi">
-        <div class="f11 fw7" style="color:${renk}">${s.saat}</div>
-        <div class="f11 ellipsis" style="color:var(--txt);margin-top:1px">${esc(o.isim.split(" ")[0])}</div>
-        <div class="f10 c-dim">${esc(s.ders||o.ders)}</div>
-        <div class="dots mt4">${[1,2,3,4].map(i=>`<div class="dot" style="width:6px;height:6px;border:1.5px solid ${i<=p?renk:"var(--brown-bd)"};background:${i<=p?renk:"transparent"}"></div>`).join("")}</div>
-        <button style="position:absolute;top:3px;right:4px;background:none;border:none;color:var(--brown-bd);cursor:pointer;font-size:13px;line-height:1" data-slotSil="${s.id}">×</button>
+      html+=`<div class="prog-slot" style="background:${dr.bg};border:1px solid ${dr.border};box-shadow:0 2px 8px ${dr.glow}" data-checklistAc="${o.id}" title="${esc(o.isim)} — ${esc(slotDers)}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <div class="f11 fw7" style="color:${dr.text}">${s.saat}</div>
+          <div style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:${dr.border}33;color:${dr.text};letter-spacing:.03em">${esc(slotDers.slice(0,3).toUpperCase())}</div>
+        </div>
+        <div class="f12 fw7 ellipsis" style="color:var(--txt);margin-bottom:2px">${esc(o.isim.split(" ")[0])}</div>
+        ${s.ogretmen?`<div class="f9 ellipsis" style="color:${dr.text};opacity:.7">${esc(s.ogretmen.split(" ")[0])}</div>`:`<div class="f9 c-dim">${esc(o.ders||'')}</div>`}
+        <div class="dots mt4">${[1,2,3,4].map(i=>`<div class="dot" style="width:6px;height:6px;border:1.5px solid ${i<=p?dr.text:"var(--brown-bd)"};background:${i<=p?dr.text:"transparent"}"></div>`).join("")}</div>
+        <button style="position:absolute;top:3px;right:4px;background:none;border:none;color:${dr.border};cursor:pointer;font-size:13px;line-height:1;opacity:.6" data-slotSil="${s.id}">×</button>
       </div>`;
     });
     if(!gs.length) html+=`<div class="f11 text-center" style="color:var(--brown-bd);padding-top:14px">—</div>`;
@@ -1393,18 +1410,24 @@ function renderMuhasebe(){
   ogr.forEach(o=>{
     const oSlotlar = slot.filter(s=>s.oid===o.id);
     if(!oSlotlar.length){
+      // Slot yok: öğrenci düzeyinde ders
       const d = o.ders||"Diğer";
       if(!dersBazli[d]) dersBazli[d]={ogr:0,slot:0,aylik:0};
       dersBazli[d].ogr++;
       dersBazli[d].aylik += o.ucret;
     } else {
+      // Slot var: her slot kendi dersine sayılır
+      const sayilanDersler = new Set();
       oSlotlar.forEach(s=>{
         const d = s.ders||o.ders||"Diğer";
         if(!dersBazli[d]) dersBazli[d]={ogr:0,slot:0,aylik:0};
         dersBazli[d].slot++;
-        dersBazli[d].aylik += o.ucret;
+        dersBazli[d].aylik += o.ucret; // Her slot bağımsız ücret
+        if(!sayilanDersler.has(d)){
+          dersBazli[d].ogr++; // Her ders türü için öğrenciyi 1x say
+          sayilanDersler.add(d);
+        }
       });
-      dersBazli[o.ders||"Diğer"].ogr++;
     }
   });
 
@@ -1493,9 +1516,16 @@ function renderMuhasebe(){
     html+=`<div class="f12 c-dim">Henüz ders kaydı yok.</div>`;
   } else {
     aktifDersler.forEach(([ders,v])=>{
-      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--card-bd)">
-        <div><div class="f13 fw6">${esc(ders)}</div><div class="f10 c-dim">${v.ogr} öğrenci · ${v.slot} slot</div></div>
-        <div class="f13 fw7 c-lime">${fmtEur(v.aylik)}<span class="f10 c-dim fw4">/ay</span></div>
+      const dr3 = dersRenk(ders);
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin-bottom:5px;border-radius:6px;background:${dr3.bg};border:1px solid ${dr3.border}33">
+        <div class="flex flex-center gap8">
+          <div style="width:4px;height:36px;border-radius:2px;background:${dr3.border};flex-shrink:0"></div>
+          <div>
+            <div class="f13 fw7" style="color:${dr3.text}">${esc(ders)}</div>
+            <div class="f10 c-dim">${v.ogr} öğrenci · ${v.slot} slot</div>
+          </div>
+        </div>
+        <div class="f14 fw7" style="color:${dr3.text}">${fmtEur(v.aylik)}<span class="f10 c-dim fw4">/ay</span></div>
       </div>`;
     });
   }
@@ -1543,7 +1573,10 @@ function renderMuhasebe(){
     const dersler = oSlotlar.length ? [...new Set(oSlotlar.map(s=>s.ders||o.ders))].join(", ") : o.ders;
     html+=`<tr style="border-bottom:1px solid var(--card-bd)">
       <td style="padding:7px 8px;font-weight:600">${esc(o.isim)}</td>
-      <td style="padding:7px 8px;color:var(--txt-dim)">${esc(dersler)}${oSlotlar.length?` <span style="color:var(--lime-d)">(${oSlotlar.length} slot)</span>`:''}</td>
+      <td style="padding:7px 8px">
+        ${[...new Set(oSlotlar.length?oSlotlar.map(s=>s.ders||o.ders):[o.ders])].map(d=>{const dr4=dersRenk(d);return `<span style="display:inline-block;padding:1px 7px;border-radius:4px;background:${dr4.bg};border:1px solid ${dr4.border};color:${dr4.text};font-size:10px;font-weight:700;margin:1px 2px">${esc(d)}</span>`;}).join('')}
+        ${oSlotlar.length>1?`<span class="f10 c-dim">(${oSlotlar.length} slot)</span>`:''}
+      </td>
       <td style="padding:7px 8px;text-align:center">
         <div style="display:flex;gap:3px;justify-content:center">${[1,2,3,4].map(i=>`<div style="width:8px;height:8px;border-radius:50%;background:${i<=Math.min(p,4)?ogrRenk(o.id):'var(--brown-bd)'};border:1px solid ${i<=Math.min(p,4)?ogrRenk(o.id):'var(--brown-bd)'}"></div>`).join('')}</div>
         <div style="font-size:10px;color:var(--txt-dim);margin-top:2px">${Math.min(p,4)}/4</div>
