@@ -159,7 +159,7 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr 1fr}}
 @media(max-width:360px){.grid3{grid-template-columns:1fr}}
-.flex{display:flex}.gap8{gap:8px}.gap12{gap:12px}.gap14{gap:14px}
+.flex{display:flex}.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}
 .flex-center{align-items:center}.flex-end{justify-content:flex-end}.flex-between{justify-content:space-between}
 .flex-wrap{flex-wrap:wrap}.flex1{flex:1}.mw0{min-width:0}
 .mt4{margin-top:4px}.mt6{margin-top:6px}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt14{margin-top:14px}.mt18{margin-top:18px}
@@ -375,6 +375,7 @@ const persist = () => {
 
 /* ── Computed ── */
 const ogrRenk = id => { const i=ogr.findIndex(o=>o.id===id); return RENKLER[i%RENKLER.length]||"#a8d400"; };
+const gunSlotlar = gi => slot.filter(s=>s.gun===gi).sort((a,b)=>a.saat>b.saat?1:-1);
 /* ══════════════════════════
    PAKET / SLOT SİSTEMİ
    Her slot (gün+saat kombinasyonu) kendi bağımsız 4 kutucuğuna sahip.
