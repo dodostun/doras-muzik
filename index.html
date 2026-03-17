@@ -1971,8 +1971,51 @@ $("theme-btn").onclick=()=>{darkMode=!darkMode;persist();applyTheme();render();}
    TABS
 ══════════════════════════ */
 document.querySelectorAll(".tab-btn").forEach(btn=>{
-  btn.onclick=()=>{activeTab=btn.dataset.tab;render();};
+  btn.onclick=()=>{
+    tabTiklaSesi();
+    activeTab=btn.dataset.tab;
+    render();
+  };
 });
+
+function tabTiklaSesi(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // İki katman: hafif "tık" + yumuşak "tın"
+    
+    // 1. Kısa tık (transient)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.04);
+    gain1.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.06);
+
+    // 2. Yumuşak tın (body) - Mac karakteri
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    osc2.connect(filter);
+    filter.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(480, ctx.currentTime);
+    osc2.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.12);
+    filter.type = 'lowpass';
+    filter.frequency.value = 800;
+    gain2.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.14);
+
+    setTimeout(()=>ctx.close(), 300);
+  } catch(e){}
+}
 
 /* ══════════════════════════
    INIT
