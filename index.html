@@ -1036,31 +1036,46 @@ function modalDuzenleAra(){
 function gosterDuzenleForm(oid){
   const o = ogr.find(x => x.id === oid);
   if(!o) return;
-  const araSonuclar = document.getElementById('ara-sonuclar');
-  const araForm = document.getElementById('ara-form');
-  if(araSonuclar) araSonuclar.innerHTML = '';
+
   const dersOpts = DERS_T.map(d => `<option ${o.ders===d?'selected':''}>${d}</option>`).join('');
   const ogretOpts = `<option value="">—</option>` + OGRETMENLER.map(og => `<option value="${og}" ${(o.ogretmen||'')===og?'selected':''}>${og}</option>`).join('');
-  araForm.innerHTML = `
-    <div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:16px;margin-top:8px">
-      <div class="f14 fw7 c-lime mb12">✏️ ${esc(o.isim)}</div>
-      <div class="form-col">
-        <div><div class="lbl">İsim</div><input class="inp" id="ed-isim" value="${esc(o.isim)}"></div>
-        <div class="grid2">
-          <div><div class="lbl">Ders Türü</div><select class="inp" id="ed-ders">${dersOpts}</select></div>
-          <div><div class="lbl">Öğretmen</div><select class="inp" id="ed-ogretmen">${ogretOpts}</select></div>
-        </div>
-        <div class="grid2">
-          <div><div class="lbl">Telefon</div><input class="inp" id="ed-tel" value="${esc(o.tel||'')}"></div>
-          <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="ed-ucret" value="${o.ucret||0}"></div>
-        </div>
-        <div><div class="lbl">Notlar</div><textarea class="inp" id="ed-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
-        <div class="flex gap8 flex-end mt4">
-          <button class="btn-o" onclick="document.getElementById('ara-form').innerHTML='';document.getElementById('ara-input').value='';document.getElementById('ara-input').focus()">← Geri</button>
-          <button class="btn" onclick="kaydetDuzenle(${oid})">💾 Kaydet</button>
-        </div>
+
+  const formHTML = `<div class="modal-title">✏️ ${esc(o.isim)}</div>
+    <div class="form-col">
+      <div><div class="lbl">İsim</div><input class="inp" id="ed-isim" value="${esc(o.isim)}"></div>
+      <div class="grid2">
+        <div><div class="lbl">Ders Türü</div><select class="inp" id="ed-ders">${dersOpts}</select></div>
+        <div><div class="lbl">Öğretmen</div><select class="inp" id="ed-ogretmen">${ogretOpts}</select></div>
+      </div>
+      <div class="grid2">
+        <div><div class="lbl">Telefon</div><input class="inp" id="ed-tel" value="${esc(o.tel||'')}"></div>
+        <div><div class="lbl">Ücret (€)</div><input class="inp" type="number" id="ed-ucret" value="${o.ucret||0}"></div>
+      </div>
+      <div><div class="lbl">Notlar</div><textarea class="inp" id="ed-notlar" rows="2">${esc(o.notlar||'')}</textarea></div>
+      <div class="flex gap8 flex-end mt4">
+        <button class="btn-o" id="ed-geri-btn">← Geri</button>
+        <button class="btn" onclick="kaydetDuzenle(${oid})">💾 Kaydet</button>
       </div>
     </div>`;
+
+  // modalDuzenleAra içinden mi yoksa direkt mi açıldı?
+  const araForm = document.getElementById('ara-form');
+  const araSonuclar = document.getElementById('ara-sonuclar');
+
+  if(araForm){
+    // modalDuzenleAra içinde: forma yaz
+    if(araSonuclar) araSonuclar.innerHTML = '';
+    araForm.innerHTML = '<div style="background:var(--brown);border:1px solid var(--lime-bd);border-radius:8px;padding:16px;margin-top:8px">' + formHTML + '</div>';
+    document.getElementById('ed-geri-btn').onclick = () => {
+      araForm.innerHTML = '';
+      const araInput = document.getElementById('ara-input');
+      if(araInput){ araInput.value = ''; araInput.focus(); }
+    };
+  } else {
+    // Direkt çağrı (Kayıtlar modalından): overlay'i kullan
+    showOverlay(formHTML);
+    document.getElementById('ed-geri-btn').onclick = () => modalChecklist(oid);
+  }
 }
 
 function kaydetDuzenle(oid){
@@ -1099,7 +1114,7 @@ function modalChecklist(oid){
           <div class="f11 c-dim">${esc(o.ders)}${o.ogretmen?' · '+esc(o.ogretmen):''} · ${fmtEur(o.ucret)}/paket</div>
         </div>
       </div>
-      <button onclick="closeOverlay();setTimeout(()=>gosterDuzenleForm(${oid}),80)" class="btn-o" style="font-size:12px;padding:7px 12px;flex-shrink:0">✏️ Düzenle</button>
+      <button onclick="gosterDuzenleForm(${oid})" class="btn-o" style="font-size:12px;padding:7px 12px;flex-shrink:0">✏️ Düzenle</button>
     </div>`;
 
   if(ogSlotlar.length === 0){
