@@ -1338,7 +1338,9 @@ if(!GAS_URL){
     const banner = document.createElement('div');
     banner.id = 'sync-warn';
     banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#3a1010;border:1.5px solid var(--red);border-radius:8px;padding:10px 18px;font-size:12px;color:var(--red);z-index:999;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.5)';
-    banner.innerHTML = '⚠ Sync ayarlanmamış — veriler sadece bu cihazda! <button onclick="modalExportImport();document.getElementById('sync-warn')?.remove()" style="background:var(--red);color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;margin-left:8px;font-size:11px">Ayarla</button> <button onclick="this.parentElement.remove()" style="background:transparent;border:none;color:var(--red);cursor:pointer;margin-left:4px;font-size:14px">×</button>';
+    banner.innerHTML = "⚠ Sync ayarlanmamış — veriler sadece bu cihazda! " +
+      '<button onclick="modalExportImport()" style="background:var(--red);color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;margin-left:8px;font-size:11px">Ayarla</button> ' +
+      '<button onclick="this.parentElement.remove()" style="background:transparent;border:none;color:var(--red);cursor:pointer;margin-left:4px;font-size:14px">×</button>';
     document.body.appendChild(banner);
   }, 3000);
 }
