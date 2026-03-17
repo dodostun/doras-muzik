@@ -278,9 +278,9 @@ function setSyncStatus(s, msg){
   const el = document.getElementById("sync-status");
   if(!el) return;
   const map = {
-    idle:    {icon:"☁️",  color:"var(--txt-dim)", text: GAS_URL ? "Sync hazır" : "Sync ayarlanmamış"},
+    idle:    {icon:"☁️",  color:"var(--txt-dim)", text: GAS_URL ? "Sync hazır" : "Sync ayarlanmamış — 💾 butonundan ayarla"},
     syncing: {icon:"🔄", color:"var(--lime)",     text: "Senkronize ediliyor…"},
-    ok:      {icon:"✅", color:"var(--green)",     text: "Senkronize edildi · " + msg},
+    ok:      {icon:"✅", color:"var(--green)",     text: msg || "Senkronize"},
     error:   {icon:"⚠️", color:"var(--red)",       text: "Sync hatası: " + msg}
   };
   const d = map[s] || map.idle;
@@ -334,18 +334,44 @@ async function syncFromDrive(silent){
       const driveOgrSayisi = (d.ogr||[]).length;
 
       if(silent){
-        // Otomatik yükleme: SADECE local tamamen boşsa yükle
-        if(ogr.length > 0){
-          setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR"));
-          return; // Local veri var, dokunma!
+        const driveTs = d.ts || 0;
+        const localTs = load("doras_last_ts", 0);
+
+        if(ogr.length === 0){
+          // Local boş → Drive'dan yükle (ilk kurulum)
+          ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
+          const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
+          _nid = allIds.length ? Math.max(...allIds)+1 : 100;
+          save("doras_last_ts", driveTs);
+          // persist() yerine direkt kaydet (sonsuz döngü önlemi)
+          save(KEYS.ogr,ogr);save(KEYS.slot,slot);save(KEYS.drs,drs);save(KEYS.odm,odm);
+          render();
+          setSyncStatus("ok","Drive'dan yüklendi");
+          return;
         }
-        // Local boş, Drive'dan yükle
-        ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
-        const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
-        _nid = allIds.length ? Math.max(...allIds)+1 : 100;
-        save("doras_last_ts", d.ts||0);
-        persist(); render();
-        setSyncStatus("ok","Drive'dan yüklendi (ilk kurulum)");
+
+        if(driveTs > localTs + 5000){
+          // Drive daha yeni (5sn tolerans) → otomatik güncelle
+          // Önce yerel snapshot al
+          try {
+            const snapKey = "doras_snap_" + Date.now();
+            localStorage.setItem(snapKey, JSON.stringify({
+              ogr,slot,drs,odm,ts:Date.now(),
+              tarih:"[Otosync öncesi] "+new Date().toLocaleString("tr-TR")
+            }));
+          } catch(e){}
+          ogr=d.ogr||[]; slot=d.slot||[]; drs=d.drs||[]; odm=d.odm||[];
+          const allIds=[...ogr.map(x=>x.id),...slot.map(x=>x.id),...drs.map(x=>x.id),...odm.map(x=>x.id)];
+          _nid = allIds.length ? Math.max(...allIds)+1 : 100;
+          save("doras_last_ts", driveTs);
+          save(KEYS.ogr,ogr);save(KEYS.slot,slot);save(KEYS.drs,drs);save(KEYS.odm,odm);
+          render();
+          setSyncStatus("ok","Güncellendi · "+new Date().toLocaleTimeString("tr-TR"));
+          return;
+        }
+
+        // Local daha yeni veya eşit → dokunma
+        setSyncStatus("ok", new Date().toLocaleTimeString("tr-TR"));
         return;
       }
 
@@ -374,8 +400,13 @@ function scheduleSyncToDrive(){
   if(!GAS_URL) return;
   _syncTimer = setTimeout(()=>syncToDrive(true), 2000); // 2sn debounce
 }
-// Auto-sync: push local changes to Drive every 5 minutes (safe - never overwrites local)
-setInterval(()=>{ if(GAS_URL && ogr.length > 0) syncToDrive(true); }, 300000);
+// Otomatik senkronizasyon: 30 saniyede bir
+// - Önce Drive'ı kontrol et (daha yeni veri varsa çek)
+// - Sonra local'i gönder (timestamp ile)
+setInterval(()=>{
+  if(!GAS_URL) return;
+  syncFromDrive(true); // timestamp karşılaştırır, gerekirse günceller
+}, 30000); // 30 saniye
 
 /* ── State ── */
 let ogr  = load(KEYS.ogr,[
@@ -1510,15 +1541,16 @@ if(!GAS_URL){
   }, 3000);
 }
 if(GAS_URL){
-  // Startup: push local data to Drive (safe - only sends, never overwrites local)
-  // Then silently check if Drive has more data (only if local is empty)
-  setTimeout(()=>{ 
-    if(ogr.length === 0){
-      syncFromDrive(true); // Safe: local empty, load from Drive
-    } else {
-      syncToDrive(true); // Local has data: push to Drive
-    }
+  // Startup: 2sn sonra Drive'ı kontrol et
+  // Timestamp karşılaştırması ile güvenli senkronizasyon
+  setTimeout(()=>{
+    syncFromDrive(true); // Timestamp'e göre karar verir
   }, 2000);
+  // Eğer local daha yeni ise 4sn sonra Drive'a gönder
+  setTimeout(()=>{
+    const localTs = load("doras_last_ts", 0);
+    if(localTs > 0 && ogr.length > 0) syncToDrive(true);
+  }, 4000);
 }
 
 /* iOS install hint (shows once) */
