@@ -1970,50 +1970,84 @@ $("theme-btn").onclick=()=>{darkMode=!darkMode;persist();applyTheme();render();}
 /* ══════════════════════════
    TABS
 ══════════════════════════ */
+// Do majör gamı — her sekmeye bir nota
+const TAB_NOTA = {
+  bugun:      261.63,  // Do  (C4)
+  yarin:      293.66,  // Re  (D4)
+  program:    329.63,  // Mi  (E4)
+  haftalik:   349.23,  // Fa  (F4)
+  ogrenciler: 392.00,  // Sol (G4)
+  gecikme:    440.00,  // La  (A4)
+  gecmis:     493.88,  // Si  (B4)
+  muhasebe:   523.25,  // Do  (C5)
+};
+
 document.querySelectorAll(".tab-btn").forEach(btn=>{
   btn.onclick=()=>{
-    tabTiklaSesi();
+    notaCal(TAB_NOTA[btn.dataset.tab] || 440);
     activeTab=btn.dataset.tab;
     render();
   };
 });
 
-function tabTiklaSesi(){
+function notaCal(frekans){
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // İki katman: hafif "tık" + yumuşak "tın"
-    
-    // 1. Kısa tık (transient)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(1200, ctx.currentTime);
-    osc1.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.04);
-    gain1.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
-    osc1.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 0.06);
+    const t = ctx.currentTime;
 
-    // 2. Yumuşak tın (body) - Mac karakteri
+    // Marimba / vibraphone tarzı: temel + harmonikler + hızlı decay
+    // Tatlı, yuvarlak, notalı ama piyano değil
+
+    // Temel nota
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = frekans;
+    gainNode.gain.setValueAtTime(0.0, t);
+    gainNode.gain.linearRampToValueAtTime(0.22, t + 0.008); // hızlı attack
+    gainNode.gain.setValueAtTime(0.22, t + 0.012);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.38); // yumuşak decay
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.4);
+
+    // 2. harmonik (oktav üstü) — parlaklık
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    osc2.connect(filter);
-    filter.connect(gain2);
-    gain2.connect(ctx.destination);
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(480, ctx.currentTime);
-    osc2.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.12);
-    filter.type = 'lowpass';
-    filter.frequency.value = 800;
-    gain2.gain.setValueAtTime(0.12, ctx.currentTime);
-    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
-    osc2.start(ctx.currentTime);
-    osc2.stop(ctx.currentTime + 0.14);
+    osc2.frequency.value = frekans * 2;
+    gain2.gain.setValueAtTime(0.0, t);
+    gain2.gain.linearRampToValueAtTime(0.07, t + 0.008);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.18); // daha hızlı söner
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(t);
+    osc2.stop(t + 0.2);
 
-    setTimeout(()=>ctx.close(), 300);
+    // 3. harmonik (2.5x) — marimba karakteri
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.type = 'sine';
+    osc3.frequency.value = frekans * 2.756; // marimba'nın karakteristik harmonik oranı
+    gain3.gain.setValueAtTime(0.0, t);
+    gain3.gain.linearRampToValueAtTime(0.04, t + 0.006);
+    gain3.gain.exponentialRampToValueAtTime(0.001, t + 0.10);
+    osc3.connect(gain3);
+    gain3.connect(ctx.destination);
+    osc3.start(t);
+    osc3.stop(t + 0.12);
+
+    // Hafif reverb etkisi — kısa delay
+    const delay = ctx.createDelay(0.1);
+    const delayGain = ctx.createGain();
+    delay.delayTime.value = 0.022;
+    delayGain.gain.value = 0.08;
+    gainNode.connect(delay);
+    delay.connect(delayGain);
+    delayGain.connect(ctx.destination);
+
+    setTimeout(()=>ctx.close(), 600);
   } catch(e){}
 }
 
