@@ -153,6 +153,7 @@ h1,h2,.logo-text{font-family:'Permanent Marker',cursive}
 .pop{animation:pop .2s ease-out}
 @keyframes sd{0%{opacity:0;transform:translateY(-8px)}100%{opacity:1;transform:translateY(0)}}
 .sd{animation:sd .2s ease-out}
+@keyframes neonPulse{0%,100%{opacity:1;box-shadow:0 0 8px currentColor}50%{opacity:.75;box-shadow:0 0 22px currentColor, 0 0 6px currentColor}}
 
 /* ── Grid helpers ── */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -264,7 +265,7 @@ const $      = id => document.getElementById(id);
 const el     = (tag,attr="",inner="") => `<${tag} ${attr}>${inner}</${tag}>`;
 
 /* ── LocalStorage ── */
-const KEYS = {ogr:"doras_ogr",slot:"doras_slot",drs:"doras_drs",odm:"doras_odm",theme:"doras_theme"};
+const KEYS = {ogr:"doras_ogr",slot:"doras_slot",drs:"doras_drs",odm:"doras_odm",gmd:"doras_gmd",theme:"doras_theme"};
 function load(key,def){try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch{return def;}}
 function save(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
 
@@ -303,7 +304,7 @@ async function syncToDrive(silent){
   setSyncStatus("syncing","");
   try {
     const ts = Date.now();
-    const veri = {ogr,slot,drs,odm};
+    const veri = {ogr,slot,drs,odm,gmd};
     const payload = {action:"save", data:veri, ts};
     const res = await fetch(GAS_URL + "?action=save", {
       method: "POST",
@@ -428,13 +429,14 @@ let odm  = load(KEYS.odm,[
   {id:1,oid:1,tutar:120,tarih:"2026-02-05",aciklama:"4 ders paketi",ay:1,yil:2026},
   {id:2,oid:3,tutar:140,tarih:"2026-03-01",aciklama:"4 ders paketi",ay:2,yil:2026},
 ]);
+let gmd  = load(KEYS.gmd, []); // gelmedi kayıtları: {id, oid, slotId, tarih, saat}
 let darkMode = load(KEYS.theme, true);
 let activeTab = "bugun";
 let haftaOff = 0;
 
 /* ── Persist ── */
 const persist = () => {
-  save(KEYS.ogr,ogr);save(KEYS.slot,slot);save(KEYS.drs,drs);save(KEYS.odm,odm);save(KEYS.theme,darkMode);
+  save(KEYS.ogr,ogr);save(KEYS.slot,slot);save(KEYS.drs,drs);save(KEYS.odm,odm);save(KEYS.gmd,gmd);save(KEYS.theme,darkMode);
   const ts = Date.now();
   save("doras_last_ts", ts);
   // Otomatik yerel yedek: son 20 snapshot saklanır, eski silinir
@@ -533,28 +535,54 @@ function renderBugun(gunStr, gunIdx, kilitli){
   if(!slots.length){
     html+=`<div class="card p24 text-center c-dim f13">Bu gün için ders slotu tanımlanmamış.</div>`;
   } else {
+    const simdi = new Date();
     slots.forEach(s=>{
       const o=ogr.find(x=>x.id===s.oid); if(!o)return;
-      // Check if this slot has a lesson today
       const bugunDrs=drs.filter(d=>d.oid===o.id && d.tarih===gunStr && (d.slot_id===s.id || (!d.slot_id && !slot.find(sl=>sl.oid===o.id&&sl.id!==s.id))));
       const aldi=bugunDrs.length>0;
       const paket=paketDurSlot(o.id, s.id, drs, odm);
       const borclu=paket>=4;
       const renk=ogrRenk(o.id);
       const tikClass=`tik${aldi?" done":""}${kilitli?" locked":""}`;
-      html+=`<div class="day-card${aldi?" done":""}">
-        <div class="${tikClass}" ${!kilitli&&!aldi?`data-dersAl="${o.id}" data-slotId="${s.id}" style="cursor:pointer"`:""} title="${kilitli?"Önizleme":aldi?"İşaretlendi":"Tıkla — ders aldı"}">${aldi?"✓":""}</div>
+
+      // Gelmedi kaydı var mı?
+      const gelmediKayit = gmd.find(g=>g.oid===o.id && g.slotId===s.id && g.tarih===gunStr);
+
+      // Ders saati penceresi: saat geldi mi, 3 saat geçti mi?
+      let aktifPencere = false;
+      let pencerebitis = false;
+      if(!kilitli && s.saat){
+        const [sh,sm] = s.saat.split(":").map(Number);
+        const dersBaslangic = new Date(simdi); dersBaslangic.setHours(sh,sm,0,0);
+        const dersBitis = new Date(dersBaslangic); dersBitis.setHours(sh+3,sm,0,0);
+        aktifPencere = simdi >= dersBaslangic && simdi <= dersBitis;
+        pencerebitis = simdi > dersBitis;
+      }
+
+      const neonStyle = aktifPencere && !aldi && !gelmediKayit
+        ? `box-shadow:0 0 18px ${renk}55, 0 0 6px ${renk}33; border-color:${renk}; animation:neonPulse 2s ease-in-out infinite;`
+        : gelmediKayit
+        ? `border-color:var(--red);background:var(--red-bg);`
+        : aldi
+        ? ``
+        : ``;
+
+      html+=`<div class="day-card${aldi?" done":""}" data-checklistAc="${o.id}" style="cursor:pointer;${neonStyle}" title="${esc(o.isim)} — kayıtlara git">
+        <div class="${tikClass}" ${!kilitli&&!aldi&&!gelmediKayit?`onclick="event.stopPropagation();dersKayitSor(${o.id},${s.id},'${gunStr}','${s.saat||''}')" style="cursor:pointer"`:""} title="${kilitli?"Önizleme":aldi?"İşaretlendi":gelmediKayit?"Gelmedi 😔":"Tıkla — ders aldı"}">${aldi?"✓":gelmediKayit?"✗":""}</div>
         <div class="flex1 mw0">
           <div class="flex flex-center gap8 flex-wrap">
-            <span class="f15 fw7" style="color:${aldi?"var(--green)":"var(--txt)"}">${esc(o.isim)}</span>
+            <span class="f15 fw7" style="color:${aldi?"var(--green)":gelmediKayit?"var(--red)":"var(--txt)"}">${esc(o.isim)}</span>
             ${borclu?`<span class="badge badge-red">ÖDEME GEREKİYOR</span>`:""}
+            ${aktifPencere&&!aldi&&!gelmediKayit?`<span class="badge" style="background:${renk}22;color:${renk};animation:neonPulse 2s infinite">● Ders Vakti</span>`:""}
+            ${gelmediKayit?`<span class="badge badge-red">😔 Gelmedi — ${fmtD(gelmediKayit.tarih)}</span>`:""}
           </div>
           <div class="f12 c-dim mt4">${esc(s.ders||o.ders)} · ${s.saat}${(s.ogretmen||o.ogretmen)?' · '+esc(s.ogretmen||o.ogretmen):''}</div>
           <div class="f11 c-dim">Slot: ${GUNLER[s.gun]} ${s.saat} — ${Math.min(paket,4)}/4</div>
         </div>
         <div class="flex" style="flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0">
-          ${!kilitli&&aldi?`<button class="btn-ghost" style="color:var(--red);border-color:var(--red);font-size:11px" data-dersGeri="${o.id}" data-slotId="${s.id}">↩ Geri Al</button>`:""}
-          ${!kilitli&&borclu?`<button class="btn f11" data-odemeAc="${o.id}" data-slotId="${s.id}">💰 Ödeme Al</button>`:""}
+          ${!kilitli&&aldi?`<button class="btn-ghost" style="color:var(--red);border-color:var(--red);font-size:11px" data-dersGeri="${o.id}" data-slotId="${s.id}" onclick="event.stopPropagation()">↩ Geri Al</button>`:""}
+          ${!kilitli&&gelmediKayit?`<button class="btn-ghost" style="font-size:10px" onclick="event.stopPropagation();gelmediSil(${gelmediKayit.id},${o.id})">↩ İptal</button>`:""}
+          ${!kilitli&&borclu?`<button class="btn f11" data-odemeAc="${o.id}" data-slotId="${s.id}" onclick="event.stopPropagation()">💰 Ödeme Al</button>`:""}
           <button class="btn-ghost f10" onclick="event.stopPropagation();modalChecklist(${o.id})">📋 Kayıtlar</button>
         </div>
       </div>`;
@@ -562,6 +590,7 @@ function renderBugun(gunStr, gunIdx, kilitli){
   }
   return html;
 }
+
 
 function renderProgram(){
   const _ogretmenFilter = window._progOgretmenFilter || "tumu";
@@ -1151,6 +1180,22 @@ function modalChecklist(oid){
     });
   }
 
+  // Gelmedi kayıtları
+  const ogGmd = [...gmd.filter(x=>x.oid===oid)].sort((a,b)=>b.tarih.localeCompare(a.tarih));
+  if(ogGmd.length){
+    html += `<div class="f11 fw7 upper ls1 c-dim mb8 mt4" style="color:var(--red)">Gelmedi Kayıtları (${ogGmd.length})</div>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">`;
+    ogGmd.slice(0,5).forEach(g=>{
+      const slotBilgi = g.slotId ? ` · ${slotuBul(g.slotId)}` : '';
+      html += `<div style="background:var(--red-bg);border:1px solid var(--red);border-radius:6px;padding:7px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span class="f12" style="color:var(--red)">😔 ${fmtD(g.tarih)} ${g.saat||''}${slotBilgi}</span>
+        <button onclick="gelmediSil(${g.id},${oid});modalChecklist(${oid})" style="background:transparent;border:none;color:var(--txt-dim);cursor:pointer;font-size:11px">× Sil</button>
+      </div>`;
+    });
+    if(ogGmd.length>5) html += `<div class="f11 c-dim text-center">+${ogGmd.length-5} daha…</div>`;
+    html += `</div>`;
+  }
+
   // Payment history
   const ogOdm=[...odm.filter(x=>x.oid===oid)].sort((a,b)=>b.tarih.localeCompare(a.tarih));
   html += `<div class="f11 fw7 upper ls1 c-dim mb8 mt4">Ödeme Geçmişi (${ogOdm.length})</div>
@@ -1338,6 +1383,72 @@ function render(){
     if(t.id==="hafta-next"){haftaOff++;render();}
     if(t.id==="hafta-reset"){haftaOff=0;render();}
   };
+}
+
+function dersKayitSor(oid, slotId, tarih, saat){
+  const o = ogr.find(x=>x.id===oid); if(!o) return;
+  showOverlay(`
+    <div class="text-center pop">
+      <div style="font-size:52px;margin-bottom:16px">🎵</div>
+      <div class="f20 fw7 c-lime mb8">${esc(o.isim)}</div>
+      <div class="f13 c-dim mb24">${esc(o.ders||'')} · ${saat} dersi</div>
+      <div class="flex gap12" style="justify-content:center">
+        <button onclick="dersGeldi(${oid},${slotId},'${tarih}','${saat}')"
+          style="background:var(--green);color:#0d0d0b;border:none;padding:14px 28px;border-radius:10px;cursor:pointer;font-size:16px;font-weight:800;min-width:120px">
+          ✅ Geldi
+        </button>
+        <button onclick="dersGelmedi(${oid},${slotId},'${tarih}','${saat}')"
+          style="background:var(--red-bg);color:var(--red);border:2px solid var(--red);padding:14px 28px;border-radius:10px;cursor:pointer;font-size:16px;font-weight:800;min-width:120px">
+          😔 Gelmedi
+        </button>
+      </div>
+      <div class="mt14"><button class="btn-o" onclick="closeOverlay()" style="font-size:12px">İptal</button></div>
+    </div>`);
+}
+
+function dersGeldi(oid, slotId, tarih, saat){
+  const o = ogr.find(x=>x.id===oid); if(!o) return;
+  // Ders ekle
+  drs.push({id:nid(), oid, tarih, saat, slot_id:slotId});
+  persist();
+  closeOverlay();
+  render();
+  // Kutlama animasyonu
+  setTimeout(()=>{
+    showOverlay(`<div class="text-center pop">
+      <div style="font-size:64px;margin-bottom:16px;animation:neonPulse 0.5s ease-in-out 3">🎉</div>
+      <div class="f22 fw8 c-lime mb8">Harika!</div>
+      <div class="f14 c-mid mb20">${esc(o.isim)} dersini tamamladı ✓</div>
+      <button class="btn" onclick="closeOverlay()">Devam</button>
+    </div>`);
+    setTimeout(closeOverlay, 2500);
+  }, 100);
+  // Paket dolu mu kontrol
+  const p = paketDurSlot(oid, slotId, drs, odm);
+  if(p>=4) setTimeout(()=>showPaketUyari(o), 2600);
+}
+
+function dersGelmedi(oid, slotId, tarih, saat){
+  const o = ogr.find(x=>x.id===oid); if(!o) return;
+  gmd.push({id:nid(), oid, slotId, tarih, saat});
+  persist();
+  closeOverlay();
+  render();
+  // Üzgün animasyon
+  setTimeout(()=>{
+    showOverlay(`<div class="text-center pop">
+      <div style="font-size:64px;margin-bottom:16px">😔</div>
+      <div class="f20 fw7" style="color:var(--red);margin-bottom:8px">Kaydedildi</div>
+      <div class="f13 c-dim mb20">${esc(o.isim)} — ${fmtD(tarih)} ${saat} dersine gelmedi.<br>Kayıtlarda hatırlatma olarak görünecek.</div>
+      <button class="btn-o" onclick="closeOverlay()">Tamam</button>
+    </div>`);
+    setTimeout(closeOverlay, 3000);
+  }, 100);
+}
+
+function gelmediSil(gmdId, oid){
+  gmd = gmd.filter(x=>x.id!==gmdId);
+  persist(); render();
 }
 
 function showPaketUyari(o){
