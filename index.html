@@ -285,10 +285,10 @@ const nid = () => _nid++;
 
 /* ── Helpers ── */
 const p2     = n => String(n).padStart(2,"0");
-const today  = () => `${BU_YIL}-${p2(BU_AY+1)}-${p2(BUGUN.getDate())}`;
-const tmrw   = () => { const t=new Date(BUGUN);t.setDate(t.getDate()+1);return `${t.getFullYear()}-${p2(t.getMonth()+1)}-${p2(t.getDate())}`; };
+const today  = () => { const d=new Date(); return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`; };
+const tmrw   = () => { const t=new Date(); t.setDate(t.getDate()+1); return `${t.getFullYear()}-${p2(t.getMonth()+1)}-${p2(t.getDate())}`; };
 const fmtD   = s => { if(!s)return"";const[y,m,d]=s.split("-");return`${d}.${m}.${y}`; };
-const fmtEur = n => "€"+Number(n).toLocaleString("de-DE",{minimumFractionDigits:0,maximumFractionDigits:2});
+const fmtEur = n => { const v = Number(n)||0; return "€"+v.toLocaleString("de-DE",{minimumFractionDigits:0,maximumFractionDigits:2}); };
 const dateStr= d => `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
 const esc    = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const $      = id => document.getElementById(id);
@@ -492,48 +492,77 @@ const gunSlotlar = gi => slot.filter(s=>s.gun===gi).sort((a,b)=>a.saat>b.saat?1:
 
 // Bir slot için son ödeme tarihinden sonraki dersleri sayar
 const paketDurSlot = (oid, slotId, d, o) => {
-  // Sadece tip==="paket" olan ödemeler paketi kapatır (erken ödemeler kapatmaz)
-  const slotOdm = o.filter(x => x.oid===oid && (slotId ? x.slot_id===slotId : !x.slot_id) && x.tip!=="erken")
-                   .sort((a,b) => b.tarih.localeCompare(a.tarih));
+  const sid = slotId ? Number(slotId) : null;
+  // Sadece tip!=="erken" olan ödemeler paketi kapatır
+  // slot_id eşleşmesi: hem tam eşleşme hem de null slot_id'li ödemeler geçerli
+  const slotOdm = o.filter(x => {
+    if(x.oid !== oid) return false;
+    if(x.tip === "erken") return false;
+    if(sid) return x.slot_id === sid || x.slot_id === null || x.slot_id === undefined;
+    return !x.slot_id; // slot yok: sadece slot_id'siz ödemeleri al
+  }).sort((a,b) => b.tarih.localeCompare(a.tarih));
   const sonOdmTarih = slotOdm[0]?.tarih || "2000-01-01";
-  return d.filter(x => x.oid===oid && (slotId ? x.slot_id===slotId : !x.slot_id) && x.tarih > sonOdmTarih).length;
+  // Ders eşleşmesi: aynı şekilde gevşet
+  return d.filter(x => {
+    if(x.oid !== oid) return false;
+    if(x.tarih <= sonOdmTarih) return false;
+    if(sid) return x.slot_id === sid || x.slot_id === null || x.slot_id === undefined;
+    return !x.slot_id;
+  }).length;
 };
 
 // Geriye dönük uyumluluk: slot olmayan öğrenciler için toplam paket sayısı
 const paketDur = (oid, d, o) => {
   const ogSlotlar = slot.filter(s => s.oid === oid);
   if(!ogSlotlar.length){
-    // Slot yok: eski sistem
+    // Slot yok: eski sistem - tarih >= ile karşılaştır (aynı gün dersi say)
     const son = (o.filter(x=>x.oid===oid&&x.tip!=="erken").sort((a,b)=>b.tarih.localeCompare(a.tarih))[0]?.tarih)||"2000-01-01";
-    return d.filter(x=>x.oid===oid && x.tarih>son).length;
+    return d.filter(x=>x.oid===oid && x.tarih>son).length; // > : ödeme günündeki ders yeni pakete ait
   }
   // Slot var: en dolu slotu döndür (borçlu gösterimi için)
-  return Math.max(...ogSlotlar.map(s => paketDurSlot(oid, s.id, d, o)));
+  const vals = ogSlotlar.map(s => paketDurSlot(oid, s.id, d, o));
+  return vals.length ? Math.max(...vals) : 0;
 };
 
 const borcluList = () => ogr.filter(o => {
-  // 4 ders tamamlanmış → ödeme bekliyor
+  const ogSlotlar = slot.filter(s => s.oid === o.id);
+  if(ogSlotlar.length) {
+    // Slot olan öğrenci: herhangi bir slotun paketi dolmuş mu?
+    return ogSlotlar.some(s => paketDurSlot(o.id, s.id, drs, odm) >= 4);
+  }
+  // Slot yok: genel kontrol
   if(paketDur(o.id, drs, odm) >= 4) return true;
-  // Hiç ödeme yapılmamış YENİ öğrenci → ödeme bekliyor
-  const hicOdemeYok = odm.filter(x=>x.oid===o.id).length === 0;
+  // Hiç ödeme yapılmamış YENİ öğrenci (erken/kayıt dışında) ve en az 1 ders var
+  const gercekOdeme = odm.filter(x=>x.oid===o.id && x.tip!=="erken").length;
   const enAzBirDers = drs.filter(x=>x.oid===o.id).length > 0;
-  if(hicOdemeYok && enAzBirDers) return true;
+  if(gercekOdeme === 0 && enAzBirDers) return true;
   return false;
 });
 
 // Ödeme yapılmamış sıfır-ders öğrenciler (henüz derse gelmedi ama ödeme bekleniyor)
-const odemeKayitBekleyenler = () => ogr.filter(o =>
-  odm.filter(x=>x.oid===o.id).length === 0 &&
-  drs.filter(x=>x.oid===o.id).length === 0
-);
+const odemeKayitBekleyenler = () => ogr.filter(o => {
+  // Gerçek ödeme (paket/kayıt) yok VE henüz hiç ders yok
+  const gercekOdeme = odm.filter(x=>x.oid===o.id && x.tip!=="erken").length;
+  const dersSayisi = drs.filter(x=>x.oid===o.id).length;
+  return gercekOdeme === 0 && dersSayisi === 0;
+});
 
 // Bir slot için mevcut paketteki dersleri getir (son ödeme sonrası)
 const slotMevcutDrs = (oid, slotId) => {
-  const slotOdm = odm.filter(x => x.oid===oid && (slotId ? x.slot_id===slotId : !x.slot_id) && x.tip!=="erken")
-                     .sort((a,b) => b.tarih.localeCompare(a.tarih));
+  const sid = slotId ? Number(slotId) : null;
+  const slotOdm = odm.filter(x => {
+    if(x.oid !== oid) return false;
+    if(x.tip === "erken") return false;
+    if(sid) return x.slot_id === sid || x.slot_id === null || x.slot_id === undefined;
+    return !x.slot_id;
+  }).sort((a,b) => b.tarih.localeCompare(a.tarih));
   const sonOdmTarih = slotOdm[0]?.tarih || "2000-01-01";
-  return drs.filter(x => x.oid===oid && (slotId ? x.slot_id===slotId : !x.slot_id) && x.tarih > sonOdmTarih)
-            .sort((a,b) => a.tarih.localeCompare(b.tarih));
+  return drs.filter(x => {
+    if(x.oid !== oid) return false;
+    if(x.tarih <= sonOdmTarih) return false;
+    if(sid) return x.slot_id === sid || x.slot_id === null || x.slot_id === undefined;
+    return !x.slot_id;
+  }).sort((a,b) => a.tarih.localeCompare(b.tarih));
 };
 
 /* ══════════════════════════
@@ -582,7 +611,15 @@ function renderBugun(gunStr, gunIdx, kilitli){
     const simdi = new Date();
     slots.forEach(s=>{
       const o=ogr.find(x=>x.id===s.oid); if(!o)return;
-      const bugunDrs=drs.filter(d=>d.oid===o.id && d.tarih===gunStr && (d.slot_id===s.id || (!d.slot_id && !slot.find(sl=>sl.oid===o.id&&sl.id!==s.id))));
+      // Bugün bu slota ait ders var mı?
+      // slot_id eşleşmesi: tam eşleşme VEYA slot_id'siz (eski kayıt) ders bu slota sayılır
+      const ogrSlotSayisi = slot.filter(sl=>sl.oid===o.id).length;
+      const bugunDrs=drs.filter(d=>{
+        if(d.oid!==o.id || d.tarih!==gunStr) return false;
+        if(d.slot_id===s.id) return true; // tam eşleşme
+        if(!d.slot_id && ogrSlotSayisi<=1) return true; // tek slot: slot_id'siz ders bu slota ait
+        return false;
+      });
       const aldi=bugunDrs.length>0;
       const paket=paketDurSlot(o.id, s.id, drs, odm);
       const borclu=paket>=4;
@@ -721,7 +758,7 @@ function renderHaftalik(){
       <div class="f16 fw7" style="color:var(--green);flex-shrink:0">${fmtEur(o.tutar)}</div>
     </div>`;
   });
-  if(hOdm.length) html+=`<div style="padding:10px 16px;display:flex;justify-content:flex-end;align-items:center;gap:8px;border-top:1px solid var(--brown-bd)"><span class="f11 c-dim upper ls1">Toplam</span><span class="f20 fw8 c-lime">${fmtEur(hOdm.reduce((s,o)=>s+o.tutar,0))}</span></div>`;
+  if(hOdm.length) html+=`<div style="padding:10px 16px;display:flex;justify-content:flex-end;align-items:center;gap:8px;border-top:1px solid var(--brown-bd)"><span class="f11 c-dim upper ls1">Toplam</span><span class="f20 fw8 c-lime">${fmtEur(hOdm.reduce((s,o)=>s+(o.tutar||0),0))}</span></div>`;
   html+=`</div></div>`;
 
   html+=`<div><div class="f10 fw7 upper ls1 c-dim mb8">Yaklaşan / Beklenen</div><div class="card">`;
@@ -736,7 +773,7 @@ function renderHaftalik(){
   html+=`</div></div></div>`;
 
   html+=`<div class="grid3">`;
-  [[`Bu Hafta Tahsilat`,fmtEur(hOdm.reduce((s,o)=>s+o.tutar,0)),"var(--green)"],
+  [[`Bu Hafta Tahsilat`,fmtEur(hOdm.reduce((s,o)=>s+(o.tutar||0),0)),"var(--green)"],
    [`Beklenen Ödeme`,fmtEur(hBekl.reduce((s,o)=>s+o.ucret,0)),"var(--lime)"],
    [`Ödeme Bekleyen`,`${borclu.length} öğrenci`,"var(--red)"]].forEach(([l,v,c])=>{
     html+=`<div class="card p20"><div class="f10 fw6 upper ls1 c-dim mb8">${l}</div><div class="f24 fw8" style="color:${c}">${v}</div></div>`;
@@ -749,7 +786,7 @@ function renderHaftalik(){
     const d = new Date(BU_YIL, BU_AY-i, 1);
     const ay = d.getMonth(), yil = d.getFullYear();
     const ayOdm = odm.filter(o=>o.ay===ay && o.yil===yil);
-    ayOzetler.push({ay, yil, toplam: ayOdm.reduce((s,o)=>s+o.tutar,0), sayi: ayOdm.length});
+    ayOzetler.push({ay, yil, toplam: ayOdm.reduce((s,o)=>s+(o.tutar||0),0), sayi: ayOdm.length});
   }
   const maxToplam = Math.max(...ayOzetler.map(x=>x.toplam), 1);
 
@@ -840,12 +877,12 @@ function renderOgrenciler(){
     const renk=RENKLER[idx%RENKLER.length];
     const ogSlotlar=slot.filter(s=>s.oid===o.id);
     // Check if any slot is overdue
-    const hicOdeme = odm.filter(x=>x.oid===o.id).length===0;
+    const gercekOdeme = odm.filter(x=>x.oid===o.id && x.tip!=="erken").length;
     const hicDers  = drs.filter(x=>x.oid===o.id).length===0;
     const borclu = ogSlotlar.length
-      ? ogSlotlar.some(s=>paketDurSlot(o.id,s.id,drs,odm)>=4) || (hicOdeme && !hicDers)
-      : paketDur(o.id,drs,odm)>=4 || (hicOdeme && !hicDers);
-    const odemeKayitBekliyor = hicOdeme && hicDers;
+      ? ogSlotlar.some(s=>paketDurSlot(o.id,s.id,drs,odm)>=4) || (gercekOdeme===0 && !hicDers)
+      : paketDur(o.id,drs,odm)>=4 || (gercekOdeme===0 && !hicDers);
+    const odemeKayitBekliyor = gercekOdeme===0 && hicDers;
     html+=`<div class="card-row" data-ogrDetay="${o.id}" style="cursor:pointer">
       <div style="width:40px;height:40px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0">${esc(o.isim.charAt(0))}</div>
       <div class="flex1 mw0">
@@ -903,7 +940,9 @@ function renderGecikme(){
   }
 
   // 4 dersi dolan öğrenciler
-  const paketDoldu = borclu.filter(o => paketDur(o.id,drs,odm)>=4 || (odm.filter(x=>x.oid===o.id).length>0 && drs.filter(x=>x.oid===o.id).length>=4));
+  // Paketi dolan öğrenciler = borclu listesinden kayıt bekleyenleri çıkar
+  const kayitBekleyenIds = new Set(kayitBekleyen.map(o=>o.id));
+  const paketDoldu = borclu.filter(o => !kayitBekleyenIds.has(o.id));
   if(paketDoldu.length){
     html+=`<div class="f11 fw7 upper ls1 mb8 c-red">⚠ Paketi Dolan Öğrenciler (${paketDoldu.length})</div>
       <div class="card">`;
@@ -934,14 +973,16 @@ function renderGecmis(){
   // Tüm ödemeleri ay bazında grupla
   const ayGruplari = {};
   [...odm].sort((a,b)=>b.tarih.localeCompare(a.tarih)).forEach(o=>{
-    const key = `${o.yil}-${String(o.ay+1).padStart(2,"0")}`;
+        const oAy  = o.ay!==undefined ? o.ay  : (o.tarih ? new Date(o.tarih).getMonth() : BU_AY);
+    const oYil = o.yil!==undefined ? o.yil : (o.tarih ? new Date(o.tarih).getFullYear() : BU_YIL);
+    const key = `${oYil}-${String(oAy+1).padStart(2,"0")}`;
     if(!ayGruplari[key]) ayGruplari[key] = {yil:o.yil, ay:o.ay, odemeler:[], toplam:0};
     ayGruplari[key].odemeler.push(o);
     ayGruplari[key].toplam += o.tutar;
   });
 
   const ayKeys = Object.keys(ayGruplari).sort().reverse();
-  const genelToplam = odm.reduce((s,o)=>s+o.tutar,0);
+  const genelToplam = odm.reduce((s,o)=>s+(o.tutar||0),0);
   const buAyKey = `${BU_YIL}-${String(BU_AY+1).padStart(2,"0")}`;
   const buAyToplam = ayGruplari[buAyKey]?.toplam || 0;
   const gecenAyD = new Date(BU_YIL, BU_AY-1, 1);
@@ -976,7 +1017,7 @@ function renderGecmis(){
     html += `<div style="margin-bottom:18px">
       <div class="flex flex-between flex-center mb8">
         <div class="flex flex-center gap8">
-          <div class="f14 fw7" style="color:${isAktif?'var(--lime)':'var(--txt-mid)'}">${AYLAR[grp.ay]} ${grp.yil}</div>
+          <div class="f14 fw7" style="color:${isAktif?'var(--lime)':'var(--txt-mid)'}">${AYLAR[grp.ay!==undefined?grp.ay:0]} ${grp.yil}</div>
           ${isAktif?`<span class="badge badge-lime">Bu Ay</span>`:''}
         </div>
         <div class="f16 fw7 c-lime">${fmtEur(grp.toplam)}</div>
@@ -1602,10 +1643,14 @@ function renderMuhasebe(){
   const toplamOgr = ogr.length;
   const toplamSlot = slot.length;
   const borcluSayisi = borcluList().length;
-  const toplamOdm = odm.reduce((s,o)=>s+o.tutar, 0);
-  const buAyOdm = odm.filter(o=>o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+o.tutar,0);
+  const toplamOdm = odm.reduce((s,o)=>s+(o.tutar||0), 0);
+  const buAyOdm = odm.filter(o=>{
+    const ay = o.ay!==undefined ? o.ay : (o.tarih ? new Date(o.tarih).getMonth() : -1);
+    const yil = o.yil!==undefined ? o.yil : (o.tarih ? new Date(o.tarih).getFullYear() : -1);
+    return ay===BU_AY && yil===BU_YIL;
+  }).reduce((s,o)=>s+(o.tutar||0),0);
   const gecenAyD = new Date(BU_YIL,BU_AY-1,1);
-  const gecenAyOdm = odm.filter(o=>o.ay===gecenAyD.getMonth()&&o.yil===gecenAyD.getFullYear()).reduce((s,o)=>s+o.tutar,0);
+  const gecenAyOdm = odm.filter(o=>o.ay===gecenAyD.getMonth()&&o.yil===gecenAyD.getFullYear()).reduce((s,o)=>s+(o.tutar||0),0);
   const aylikPotansiyel = ogr.reduce((s,o)=>{
     const oSlotlar = slot.filter(sl=>sl.oid===o.id);
     return s + (oSlotlar.length||1) * o.ucret;
@@ -1677,7 +1722,7 @@ function renderMuhasebe(){
   for(let i=11;i>=0;i--){
     const d=new Date(BU_YIL,BU_AY-i,1);
     const ay=d.getMonth(),yil=d.getFullYear();
-    const toplam=odm.filter(o=>o.ay===ay&&o.yil===yil).reduce((s,o)=>s+o.tutar,0);
+    const toplam=odm.filter(o=>o.ay===ay&&o.yil===yil).reduce((s,o)=>s+(o.tutar||0),0);
     const sayi=odm.filter(o=>o.ay===ay&&o.yil===yil).length;
     sonAylar.push({ay,yil,toplam,sayi,label:AYLAR[ay].slice(0,3)+" '"+String(yil).slice(2)});
   }
@@ -1695,8 +1740,8 @@ function renderMuhasebe(){
     ["🎯 Aylık Potansiyel", fmtEur(aylikPotansiyel), "var(--lime)"],
     ["📈 Toplam Gelir", fmtEur(toplamOdm), "var(--green)"],
     ["⚠ Ödeme Bekleyen", borcluSayisi+" öğrenci", borcluSayisi>0?"var(--red)":"var(--green)"],
-    ["⚡ Erken Ödeme", fmtEur(odm.filter(o=>o.tip==="erken"&&o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+o.tutar,0)), "var(--blue)"],
-    ["🎓 Yeni Kayıt", fmtEur(odm.filter(o=>o.tip==="kayit"&&o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+o.tutar,0)), "var(--lime)"],
+    ["⚡ Erken Ödeme", fmtEur(odm.filter(o=>o.tip==="erken"&&o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+(o.tutar||0),0)), "var(--blue)"],
+    ["🎓 Yeni Kayıt", fmtEur(odm.filter(o=>o.tip==="kayit"&&o.ay===BU_AY&&o.yil===BU_YIL).reduce((s,o)=>s+(o.tutar||0),0)), "var(--lime)"],
     ["😔 Gelmedi Kaydı", toplamGelmedi+" ders", toplamGelmedi>0?"var(--red)":"var(--txt-dim)"],
   ].forEach(([l,v,c])=>{
     html+=`<div class="card p16"><div class="f10 fw6 upper ls1 c-dim mb6">${l}</div><div class="f20 fw8" style="color:${c}">${v}</div></div>`;
@@ -1780,7 +1825,7 @@ function renderMuhasebe(){
   [...ogr].sort((a,b)=>a.isim.localeCompare(b.isim,"tr")).forEach(o=>{
     const oSlotlar = slot.filter(s=>s.oid===o.id);
     const p = paketDur(o.id,drs,odm);
-    const toplamOdedi = odm.filter(x=>x.oid===o.id).reduce((s,x)=>s+x.tutar,0);
+    const toplamOdedi = odm.filter(x=>x.oid===o.id).reduce((s,x)=>s+(x.tutar||0),0);
     const borclu = p>=4;
     const dersler = oSlotlar.length ? [...new Set(oSlotlar.map(s=>s.ders||o.ders))].join(", ") : o.ders;
     html+=`<tr style="border-bottom:1px solid var(--card-bd)">
@@ -1799,6 +1844,42 @@ function renderMuhasebe(){
     </tr>`;
   });
   html += `</tbody></table></div></div>`;
+
+  // ── Son Alınan Ödemeler ──
+  const sonOdemeler = [...odm]
+    .sort((a,b) => b.tarih.localeCompare(a.tarih))
+    .slice(0, 20); // Son 20 ödeme
+
+  html += `<div class="f13 fw7 c-lime mb12 mt4">🕐 Son Alınan Ödemeler</div>
+    <div class="card">`;
+
+  if(!sonOdemeler.length){
+    html += `<div class="p24 text-center f13 c-dim">Henüz ödeme kaydı yok.</div>`;
+  } else {
+    sonOdemeler.forEach((o,i) => {
+      const og = ogr.find(x=>x.id===o.oid);
+      const renk = ogrRenk(o.oid);
+      const slotBilgi = o.slot_id ? ` · ${slotuBul(o.slot_id)}` : '';
+      const tipRenk = o.tip==='erken' ? 'var(--blue)' : o.tip==='kayit' ? 'var(--lime)' : 'var(--green)';
+      const tipIcon = o.tip==='erken' ? '⚡' : o.tip==='kayit' ? '🎓' : '✓';
+      const isIlk = i===0;
+      html += `<div class="card-row" style="cursor:default${isIlk?';background:var(--green-bg)':''}">
+        <div style="width:34px;height:34px;border-radius:50%;background:${renk}22;color:${renk};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${esc((og?.isim||'?').charAt(0))}</div>
+        <div class="flex1 mw0">
+          <div class="f13 fw6 ellipsis">${esc(og?.isim||'—')}</div>
+          <div class="f11 c-dim">${fmtD(o.tarih)}${slotBilgi} · ${esc(o.aciklama||'')}</div>
+        </div>
+        <div class="flex flex-center gap8" style="flex-shrink:0">
+          <span class="badge" style="background:${tipRenk}22;color:${tipRenk};border:1px solid ${tipRenk}55">${tipIcon} ${o.tip==='erken'?'Erken':o.tip==='kayit'?'Kayıt':'Paket'}</span>
+          <div class="f15 fw8" style="color:${tipRenk}">${fmtEur(o.tutar)}</div>
+        </div>
+      </div>`;
+    });
+    if(odm.length > 20){
+      html += `<div class="f11 c-dim text-center" style="padding:10px">+${odm.length-20} ödeme daha — Geçmiş sekmesinde tümünü görün</div>`;
+    }
+  }
+  html += `</div>`;
 
   return html;
 }
@@ -1893,8 +1974,9 @@ function dersKayitSor(oid, slotId, tarih, saat){
 
 function dersGeldi(oid, slotId, tarih, saat){
   const o = ogr.find(x=>x.id===oid); if(!o) return;
-  // Ders ekle
-  drs.push({id:nid(), oid, tarih, saat, slot_id:slotId});
+  // Ders ekle - slotId'yi her zaman Number'a çevir
+  const sidGeldi = (slotId===null||slotId===undefined||slotId==='null') ? null : Number(slotId);
+  drs.push({id:nid(), oid, tarih, saat, slot_id:sidGeldi});
   persist();
   closeOverlay();
   render();
